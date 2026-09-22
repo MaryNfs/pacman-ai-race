@@ -1,16 +1,18 @@
 {
-  "name": "packman-jev",
+  "name": "pacman-jev",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "A polished, dependency-free maze chase game for the browser.",
+  "description": "A maze chase game with a visible TypeSafe AI Jev pilot.",
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "check": "node --check game.js && node --check game-core.js && node --check server.js && npm test"
+    "check": "node --check game.js && node --check game-core.js && node --check ai-state.js && node --check jev-service.js && node --check server.js && npm test"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "0.6.0"
   }
 }
-

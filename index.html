@@ -6,19 +6,19 @@
     <meta name="theme-color" content="#080b18" />
     <meta
       name="description"
-      content="Packman Neon Run — a fast, accessible maze chase game that runs entirely in your browser."
+      content="Pacman Neon Run — watch TypeSafe AI's Jev choose every turn in a live maze chase."
     />
-    <title>Packman — Neon Run</title>
+    <title>Pacman + Jev — Neon Run</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="game-shell">
       <header class="topbar">
-        <div class="brand" aria-label="Packman Neon Run">
+        <div class="brand" aria-label="Pacman Neon Run">
           <span class="brand-mark" aria-hidden="true"></span>
           <div>
             <p class="eyebrow">Neon run</p>
-            <h1>PACKMAN</h1>
+            <h1>PACMAN <span class="brand-plus">× JEV</span></h1>
           </div>
         </div>
         <button class="icon-button" id="soundButton" type="button" aria-label="Mute sound" aria-pressed="false">
@@ -43,15 +43,18 @@
 
       <section class="play-area">
         <div class="canvas-frame">
-          <canvas id="gameCanvas" width="504" height="552" aria-label="Packman game maze" role="img"></canvas>
+          <canvas id="gameCanvas" width="504" height="552" aria-label="Pacman game maze" role="img"></canvas>
 
           <div class="overlay" id="startOverlay">
             <div class="overlay-card">
               <span class="mini-packman" aria-hidden="true"></span>
-              <p class="overlay-kicker">Ready, player?</p>
-              <h2>Clear the maze.<br />Outrun the crew.</h2>
-              <button class="primary-button" id="startButton" type="button">Start run</button>
-              <p class="overlay-hint">Arrow keys or WASD to move</p>
+              <p class="overlay-kicker">Choose your pilot</p>
+              <h2>Play it—or watch<br />Jev decide.</h2>
+              <div class="start-actions">
+                <button class="primary-button" id="jevStartButton" type="button" disabled>Checking Jev…</button>
+                <button class="secondary-button start-manual" id="startButton" type="button">Play manually</button>
+              </div>
+              <p class="overlay-hint" id="jevSetupHint">Connecting to the local Jev gateway…</p>
             </div>
           </div>
 
@@ -66,6 +69,30 @@
         </div>
 
         <aside class="side-panel">
+          <section class="panel-card jev-card" aria-label="Jev decision inspector">
+            <div class="jev-heading">
+              <div>
+                <span class="panel-label">Jev pilot</span>
+                <strong id="jevDecision">STANDBY</strong>
+              </div>
+              <span class="status-pill checking" id="jevStatus"><span></span>Checking</span>
+            </div>
+            <p class="decision-caption" id="jevCaption">Typed decisions will appear here at each junction.</p>
+            <div class="decision-meta">
+              <span><small>Confidence</small><strong id="jevConfidence">—</strong></span>
+              <span><small>Latency</small><strong id="jevLatency">—</strong></span>
+              <span><small>Model</small><strong id="jevModel">—</strong></span>
+            </div>
+            <div class="probabilities" id="jevProbabilities" aria-label="Direction probabilities">
+              <p class="empty-decisions">Waiting for a decision.</p>
+            </div>
+            <div class="decision-history-wrap">
+              <span class="panel-label">Recent turns</span>
+              <ol class="decision-history" id="jevHistory"><li>No decisions yet</li></ol>
+            </div>
+            <button class="secondary-button" id="controlModeButton" type="button" disabled>Let Jev drive</button>
+          </section>
+
           <section class="panel-card">
             <div class="panel-heading">
               <span>Lives</span>
@@ -85,10 +112,6 @@
             <button class="secondary-button" id="pauseButton" type="button">Pause <kbd>P</kbd></button>
           </section>
 
-          <section class="panel-card mission-card">
-            <span class="panel-label">Mission</span>
-            <p>Collect every dot while keeping one step ahead.</p>
-          </section>
         </aside>
       </section>
 
@@ -104,4 +127,3 @@
     <script type="module" src="game.js"></script>
   </body>
 </html>
-
