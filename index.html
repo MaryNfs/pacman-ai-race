@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080b18" />
+    <meta
+      name="description"
+      content="Packman Neon Run — a fast, accessible maze chase game that runs entirely in your browser."
+    />
+    <title>Packman — Neon Run</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <header class="topbar">
+        <div class="brand" aria-label="Packman Neon Run">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <p class="eyebrow">Neon run</p>
+            <h1>PACKMAN</h1>
+          </div>
+        </div>
+        <button class="icon-button" id="soundButton" type="button" aria-label="Mute sound" aria-pressed="false">
+          <span id="soundIcon" aria-hidden="true">◖))</span>
+        </button>
+      </header>
+
+      <section class="scoreboard" aria-label="Game status">
+        <div class="stat">
+          <span class="stat-label">Score</span>
+          <strong id="score">000000</strong>
+        </div>
+        <div class="stat stat-center">
+          <span class="stat-label">High score</span>
+          <strong id="highScore">000000</strong>
+        </div>
+        <div class="stat stat-right">
+          <span class="stat-label">Level</span>
+          <strong id="level">01</strong>
+        </div>
+      </section>
+
+      <section class="play-area">
+        <div class="canvas-frame">
+          <canvas id="gameCanvas" width="504" height="552" aria-label="Packman game maze" role="img"></canvas>
+
+          <div class="overlay" id="startOverlay">
+            <div class="overlay-card">
+              <span class="mini-packman" aria-hidden="true"></span>
+              <p class="overlay-kicker">Ready, player?</p>
+              <h2>Clear the maze.<br />Outrun the crew.</h2>
+              <button class="primary-button" id="startButton" type="button">Start run</button>
+              <p class="overlay-hint">Arrow keys or WASD to move</p>
+            </div>
+          </div>
+
+          <div class="overlay hidden" id="messageOverlay">
+            <div class="overlay-card compact">
+              <p class="overlay-kicker" id="messageKicker">Run over</p>
+              <h2 id="messageTitle">Great run!</h2>
+              <p id="messageScore" class="final-score">0 points</p>
+              <button class="primary-button" id="restartButton" type="button">Play again</button>
+            </div>
+          </div>
+        </div>
+
+        <aside class="side-panel">
+          <section class="panel-card">
+            <div class="panel-heading">
+              <span>Lives</span>
+              <div id="lives" class="lives" aria-label="3 lives"></div>
+            </div>
+            <div class="divider"></div>
+            <p class="tip"><span class="power-dot" aria-hidden="true"></span> Power dots turn the tables.</p>
+          </section>
+
+          <section class="panel-card controls-card">
+            <span class="panel-label">Controls</span>
+            <div class="key-grid" aria-hidden="true">
+              <span></span><kbd>↑</kbd><span></span>
+              <kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd>
+            </div>
+            <p>Move with arrows or WASD</p>
+            <button class="secondary-button" id="pauseButton" type="button">Pause <kbd>P</kbd></button>
+          </section>
+
+          <section class="panel-card mission-card">
+            <span class="panel-label">Mission</span>
+            <p>Collect every dot while keeping one step ahead.</p>
+          </section>
+        </aside>
+      </section>
+
+      <section class="mobile-controls" aria-label="Touch controls">
+        <button data-direction="up" aria-label="Move up">↑</button>
+        <button data-direction="left" aria-label="Move left">←</button>
+        <button data-direction="down" aria-label="Move down">↓</button>
+        <button data-direction="right" aria-label="Move right">→</button>
+      </section>
+
+      <p id="announcement" class="sr-only" aria-live="polite"></p>
+    </main>
+    <script type="module" src="game.js"></script>
+  </body>
+</html>
+
