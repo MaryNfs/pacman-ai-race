@@ -125,7 +125,7 @@
         </header>
 
         <div class="decision-flow" aria-label="Jev decision flow">
-          <span><b>1</b> Code measures the maze</span>
+          <span><b>1</b> Code scans the whole maze</span>
           <i aria-hidden="true">→</i>
           <span><b>2</b> Jev chooses a simulated route</span>
           <i aria-hidden="true">→</i>
@@ -138,7 +138,7 @@
               <h3>Structured state sent</h3>
               <span>JSON</span>
             </div>
-            <p class="telemetry-help">Only compact semantic facts are sent. Coordinates and distance calculations stay in game code.</p>
+            <p class="telemetry-help">The live state includes a compact whole-maze food map plus route metrics calculated by game code.</p>
             <pre id="jevStatePayload">Jev has not received a junction state yet.</pre>
           </article>
 

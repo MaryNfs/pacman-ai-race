@@ -64,6 +64,13 @@ export function cellKey(row, col) {
   return `${row},${col}`;
 }
 
+export function mazeRegion(key, rows = LEVEL_MAP) {
+  const [row, col] = key.split(",").map(Number);
+  const vertical = row < rows.length / 3 ? "top" : row >= rows.length * 2 / 3 ? "bottom" : "middle";
+  const horizontal = col < rows[0].length / 3 ? "left" : col >= rows[0].length * 2 / 3 ? "right" : "center";
+  return `${vertical}-${horizontal}`;
+}
+
 export function getCell(row, col, rows = LEVEL_MAP) {
   if (row < 0 || row >= rows.length) return "#";
   if (col < 0 || col >= rows[0].length) return rows[row][0] === " " ? " " : "#";
@@ -95,4 +102,3 @@ export function availableDirections(row, col, actor = "player", rows = LEVEL_MAP
 export function squaredDistance(a, b) {
   return (a.row - b.row) ** 2 + (a.col - b.col) ** 2;
 }
-

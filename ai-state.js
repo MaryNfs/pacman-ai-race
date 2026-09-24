@@ -1,4 +1,4 @@
-import { DIRECTIONS, LEVEL_MAP, OPPOSITE, availableDirections, cellKey, isWalkable, nextCell } from "./game-core.js";
+import { DIRECTIONS, LEVEL_MAP, OPPOSITE, availableDirections, cellKey, isWalkable, mazeRegion, nextCell } from "./game-core.js";
 import { enumerateRouteCandidates } from "./route-planner.js";
 
 export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, score, recentTrail = [], playerSpeed = 6.35, planningLeadTime = 0 }) {
@@ -43,6 +43,7 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
       },
       level: level > 3 ? "advanced speed" : level > 1 ? "increased speed" : "base speed",
       scoreBand: score >= 5_000 ? "high score run" : score >= 1_000 ? "established run" : "early run",
+      wholeMazeFoodScan: buildMazeFoodScan(player, pellets, powerPellets),
       directionAssessments: Object.fromEntries(Object.keys(DIRECTIONS).map((direction) => {
         const assessment = assessmentByDirection.get(direction);
         return [direction, assessment
@@ -66,6 +67,10 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
         foodYield: route.foodYield,
         powerPellets: route.powerPelletCount,
         powerPellet: route.powerYield,
+        remainingDotsAfterRoute: route.remainingFoodAfterRoute,
+        nearestRemainingDotDistance: route.nearestRemainingFoodDistance,
+        nearestRemainingDotRegion: route.nearestRemainingFoodRegion,
+        remainingDotsWithin8Tiles: route.nearbyRemainingFood,
         destinationExitCount: route.escapeRoutes,
         destinationEscapeRoutes: route.escapeQuality,
         recentPathTiles: route.repeatedCells,
@@ -75,6 +80,31 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
     routeChoices: routes.map(({ id, direction, directions, summary }) => ({ id, direction, directions, summary })),
     assessments,
     routes,
+  };
+}
+
+export function buildMazeFoodScan(player, pellets, powerPellets, rows = LEVEL_MAP) {
+  const regions = {};
+  for (const key of [...pellets, ...powerPellets]) {
+    const region = mazeRegion(key, rows);
+    regions[region] = (regions[region] || 0) + 1;
+  }
+
+  const mapTopToBottom = rows.map((row, rowIndex) => [...row].map((cell, colIndex) => {
+    const key = cellKey(rowIndex, colIndex);
+    if (rowIndex === player.row && colIndex === player.col) return "P";
+    if (pellets.has(key)) return ".";
+    if (powerPellets.has(key)) return "o";
+    if (cell === "#" || cell === "=") return cell;
+    return " ";
+  }).join(""));
+
+  return {
+    legend: "# wall, . food dot, o power dot, P planned junction, blank cleared path",
+    remainingRegularDots: pellets.size,
+    remainingPowerDots: powerPellets.size,
+    dotsByRegion: regions,
+    mapTopToBottom,
   };
 }
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDecisionRequest, findNextJunction, nearestDistance } from "../ai-state.js";
+import { buildDecisionRequest, buildMazeFoodScan, findNextJunction, nearestDistance } from "../ai-state.js";
 import { cellKey, parseLevel } from "../game-core.js";
 
 test("decision state exposes every walkable choice, including a U-turn", () => {
@@ -21,6 +21,23 @@ test("decision state exposes every walkable choice, including a U-turn", () => {
   assert.equal(decision.state.directionAssessments.left.availability, "blocked by wall");
   assert.ok(Object.keys(decision.state.routeCandidates).length > 3);
   assert.equal(typeof Object.values(decision.state.routeCandidates)[0].nearestGhostLeadSeconds, "number");
+  assert.equal(typeof Object.values(decision.state.routeCandidates)[0].nearestRemainingDotDistance, "number");
+  assert.equal(decision.state.wholeMazeFoodScan.mapTopToBottom.length, 23);
+});
+
+test("whole-maze scan preserves every remaining dot and its region", () => {
+  const scan = buildMazeFoodScan(
+    { row: 15, col: 10 },
+    new Set(["1,1", "1,2", "21,10"]),
+    new Set(["21,1"]),
+  );
+
+  assert.equal(scan.remainingRegularDots, 3);
+  assert.equal(scan.remainingPowerDots, 1);
+  assert.deepEqual(scan.dotsByRegion, { "top-left": 2, "bottom-center": 1, "bottom-left": 1 });
+  assert.equal(scan.mapTopToBottom[1][1], ".");
+  assert.equal(scan.mapTopToBottom[21][1], "o");
+  assert.equal(scan.mapTopToBottom[15][10], "P");
 });
 
 test("nearest distance is calculated in code around maze walls", () => {

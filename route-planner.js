@@ -1,4 +1,4 @@
-import { LEVEL_MAP, OPPOSITE, availableDirections, cellKey, isWalkable, nextCell } from "./game-core.js";
+import { LEVEL_MAP, OPPOSITE, availableDirections, cellKey, isWalkable, mazeRegion, nextCell } from "./game-core.js";
 
 export function enumerateRouteCandidates({
   player,
@@ -89,7 +89,13 @@ export function chooseRouteFallback(routes, frightened = false) {
   return routes.reduce((best, route) => {
     const safety = Number.isFinite(route.safetyMargin) ? route.safetyMargin : 20;
     const ghostValue = frightened ? -Math.abs(safety) : safety * 8;
-    const value = ghostValue + route.pelletCount * 3 + route.powerPelletCount * 12 + route.escapeRoutes * 2 - route.repeatedCells * 2;
+    const remainingFood = Number.isFinite(route.remainingFoodAfterRoute) ? route.remainingFoodAfterRoute : Infinity;
+    const foodDistance = Number.isFinite(route.nearestRemainingFoodDistance) ? route.nearestRemainingFoodDistance : 0;
+    const finalHuntWeight = remainingFood <= 40 ? 5 : 2;
+    const globalFoodValue = remainingFood === 0
+      ? 100
+      : (Number.isFinite(remainingFood) ? -foodDistance * finalHuntWeight + route.nearbyRemainingFood * 1.5 : 0);
+    const value = ghostValue + route.pelletCount * 3 + route.powerPelletCount * 12 + route.escapeRoutes * 2 - route.repeatedCells * 2 + globalFoodValue;
     return !best || value > best.value ? { route, value } : best;
   }, null)?.route;
 }
@@ -102,6 +108,7 @@ function assessRoute({ id, directions, path, endpoint, ghosts, pellets, powerPel
   const escapeRoutes = availableDirections(endpoint.row, endpoint.col, "player", rows).length;
   const duration = path.length / playerSpeed;
   const safetyMargin = calculateSafetyMargin(path, ghosts, playerSpeed, planningLeadTime);
+  const futureFood = assessFutureFood(endpoint, uniquePath, pellets, powerPellets, rows);
   const ghostRisk = describeRouteRisk(safetyMargin, frightenedFor, duration);
   const foodYield = describeYield(pelletCount);
   const powerYield = powerPelletCount > 0 ? "collects a power pellet" : "collects no power pellet";
@@ -121,12 +128,56 @@ function assessRoute({ id, directions, path, endpoint, ghosts, pellets, powerPel
     escapeRoutes,
     duration,
     safetyMargin,
+    ...futureFood,
     ghostRisk,
     foodYield,
     powerYield,
     escapeQuality,
     repetition,
-    summary: `${label}: ${ghostRisk}; ${foodYield}; ${powerYield}; ends with ${escapeQuality}; ${repetition}.`,
+    summary: `${label}: ${ghostRisk}; ${foodYield}; ${powerYield}; ${futureFood.globalFoodProgress}; ends with ${escapeQuality}; ${repetition}.`,
+  };
+}
+
+function assessFutureFood(endpoint, routeCells, pellets, powerPellets, rows) {
+  const collectedKeys = new Set(routeCells.map((cell) => cellKey(cell.row, cell.col)));
+  const remainingFood = new Set([...pellets, ...powerPellets].filter((key) => !collectedKeys.has(key)));
+
+  if (remainingFood.size === 0) {
+    return {
+      remainingFoodAfterRoute: 0,
+      nearestRemainingFoodDistance: 0,
+      nearestRemainingFoodRegion: "none — route clears the maze",
+      nearbyRemainingFood: 0,
+      globalFoodProgress: "clears every remaining dot",
+    };
+  }
+
+  const distances = buildDistanceMap(endpoint, "player", rows);
+  let nearestDistance = Infinity;
+  let nearestKey = null;
+  let nearbyRemainingFood = 0;
+
+  for (const key of remainingFood) {
+    const distance = distances.get(key);
+    if (distance === undefined) continue;
+    if (distance <= 8) nearbyRemainingFood += 1;
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestKey = key;
+    }
+  }
+
+  const nearestRemainingFoodRegion = nearestKey ? mazeRegion(nearestKey, rows) : "unreachable";
+  const globalFoodProgress = Number.isFinite(nearestDistance)
+    ? `nearest remaining food after this route is ${nearestDistance} maze tiles away in the ${nearestRemainingFoodRegion}; ${nearbyRemainingFood} remaining dots are within 8 tiles`
+    : "remaining food is unreachable from this endpoint";
+
+  return {
+    remainingFoodAfterRoute: remainingFood.size,
+    nearestRemainingFoodDistance: nearestDistance,
+    nearestRemainingFoodRegion,
+    nearbyRemainingFood,
+    globalFoodProgress,
   };
 }
 

@@ -48,3 +48,26 @@ test("route fallback can intercept an edible ghost during power mode", () => {
   ], true);
   assert.equal(selected.id, "left_then_up");
 });
+
+test("late-game routes know which plan approaches a distant final dot", () => {
+  const routes = enumerateRouteCandidates({
+    player: { row: 15, col: 9, direction: "left" },
+    ghosts: [{ row: 9, col: 10, speed: 5.2 }],
+    pellets: new Set(["1,1"]),
+    powerPellets: new Set(),
+  });
+  const closer = routes.find((route) => route.id === "up_then_left");
+  const farther = routes.find((route) => route.id === "left_then_down");
+
+  assert.equal(closer.nearestRemainingFoodRegion, "top-left");
+  assert.ok(closer.nearestRemainingFoodDistance < farther.nearestRemainingFoodDistance);
+  assert.match(closer.summary, /nearest remaining food/);
+});
+
+test("late-game fallback prefers progress toward the final dot", () => {
+  const selected = chooseRouteFallback([
+    { id: "toward", safetyMargin: 3, pelletCount: 0, powerPelletCount: 0, escapeRoutes: 2, repeatedCells: 0, remainingFoodAfterRoute: 1, nearestRemainingFoodDistance: 4, nearbyRemainingFood: 1 },
+    { id: "away", safetyMargin: 3, pelletCount: 0, powerPelletCount: 0, escapeRoutes: 2, repeatedCells: 0, remainingFoodAfterRoute: 1, nearestRemainingFoodDistance: 14, nearbyRemainingFood: 0 },
+  ]);
+  assert.equal(selected.id, "toward");
+});

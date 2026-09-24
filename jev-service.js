@@ -8,10 +8,11 @@ const decisionInstructions = {
   priorities: [
     "Avoid routes with predicted active-ghost collision risk before pursuing food.",
     "When ghosts are frightened, prefer a reachable interception that finishes before power mode expires.",
-    "Otherwise prefer food yield, power-pellet access, multiple exits, and low recent-path repetition.",
+    "Otherwise prefer food yield, progress toward remaining food anywhere in the maze, power-pellet access, multiple exits, and low recent-path repetition.",
+    "During the final dots, strongly prefer routes that reduce maze distance to the nearest remaining dot, even when the route itself collects no food yet.",
     "Choose exactly one supplied route candidate.",
   ],
-  note: "Route simulation, timing, food counts, and escape routes were calculated by the game. Treat them as facts; do not recalculate them.",
+  note: "Route simulation, timing, food counts, whole-maze food positions, and escape routes were calculated by the game. Treat them as facts; do not recalculate them.",
 };
 
 export function validateDecisionPayload(payload) {
