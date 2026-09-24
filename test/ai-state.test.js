@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildDecisionRequest, chooseSafeFallback, findNextJunction, nearestDistance } from "../ai-state.js";
 import { cellKey, parseLevel } from "../game-core.js";
 
-test("decision state exposes only legal forward choices with semantic labels", () => {
+test("decision state exposes every walkable choice, including a U-turn", () => {
   const level = parseLevel();
   const decision = buildDecisionRequest({
     player: { row: 3, col: 1, direction: "down" },
@@ -15,9 +15,10 @@ test("decision state exposes only legal forward choices with semantic labels", (
     score: 200,
   });
 
-  assert.deepEqual(decision.legalMoves.map((move) => move.direction).sort(), ["down", "right"]);
+  assert.deepEqual(decision.legalMoves.map((move) => move.direction).sort(), ["down", "right", "up"]);
   assert.equal(decision.state.mode, "normal mode: ghosts are dangerous");
-  assert.match(decision.legalMoves[0].summary, /regular food/);
+  assert.match(decision.legalMoves.find((move) => move.direction === "up").summary, /U-turn/);
+  assert.equal(decision.state.directionAssessments.left.availability, "blocked by wall");
 });
 
 test("nearest distance is calculated in code around maze walls", () => {

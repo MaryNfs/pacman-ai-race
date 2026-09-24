@@ -1,11 +1,7 @@
-import { LEVEL_MAP, OPPOSITE, availableDirections, cellKey, isWalkable, nextCell } from "./game-core.js";
+import { DIRECTIONS, LEVEL_MAP, OPPOSITE, availableDirections, cellKey, isWalkable, nextCell } from "./game-core.js";
 
 export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, score }) {
-  const legalDirections = availableDirections(player.row, player.col)
-    .filter((direction) => direction !== OPPOSITE[player.direction]);
-  const options = legalDirections.length > 0
-    ? legalDirections
-    : availableDirections(player.row, player.col);
+  const options = availableDirections(player.row, player.col);
   const frightened = frightenedFor > 0;
 
   const assessments = options.map((direction) => {
@@ -25,9 +21,11 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
       danger,
       food,
       power,
-      summary: `${direction}: ${danger}; regular food is ${food}; power food is ${power}; ${direction === player.direction ? "continues forward" : "turns at the junction"}.`,
+      maneuver: describeManeuver(direction, player.direction),
+      summary: `${direction}: walkable; ${describeManeuver(direction, player.direction)}; ${danger}; regular food is ${food}; power food is ${power}.`,
     };
   });
+  const assessmentByDirection = new Map(assessments.map((assessment) => [assessment.direction, assessment]));
 
   return {
     meta: { row: player.row, col: player.col },
@@ -39,14 +37,28 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
       currentHeading: player.direction,
       level: level > 3 ? "advanced speed" : level > 1 ? "increased speed" : "base speed",
       scoreBand: score >= 5_000 ? "high score run" : score >= 1_000 ? "established run" : "early run",
-      legalMoveAssessments: Object.fromEntries(assessments.map(({ direction, danger, food, power }) => [
-        direction,
-        { ghostSafety: danger, regularFood: food, powerFood: power },
-      ])),
+      directionAssessments: Object.fromEntries(Object.keys(DIRECTIONS).map((direction) => {
+        const assessment = assessmentByDirection.get(direction);
+        return [direction, assessment
+          ? {
+              availability: "walkable",
+              maneuver: assessment.maneuver,
+              ghostSafety: assessment.danger,
+              regularFood: assessment.food,
+              powerFood: assessment.power,
+            }
+          : { availability: "blocked by wall" }];
+      })),
     },
     legalMoves: assessments.map(({ direction, summary }) => ({ direction, summary })),
     assessments,
   };
+}
+
+function describeManeuver(direction, currentHeading) {
+  if (direction === currentHeading) return "continues forward";
+  if (direction === OPPOSITE[currentHeading]) return "reverses direction with a U-turn";
+  return "turns at the junction";
 }
 
 export function chooseSafeFallback(assessments, frightened = false) {

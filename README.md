@@ -40,6 +40,7 @@ The API key stays on the local Node server. It is never included in frontend Jav
 - Code calculates legal moves, food distance, and ghost risk—the exact work Jev's documentation recommends keeping deterministic.
 - Corridors and forced turns are handled locally, so Jev is called only when there is a meaningful choice.
 - Before each upcoming junction, the local server sends compact structured state and one typed `choice` question through the official `@typesafe-ai/sdk`.
+- Jev receives every walkable direction at that junction, including a reverse/U-turn option. The state also lists blocked directions explicitly so the omission is never ambiguous.
 - The model can return only a legal direction. The server validates that invariant before the browser acts.
 - Pacman, ghosts, timers, and collisions keep moving while Jev plans ahead. If an answer misses the junction deadline, a visible local safety fallback keeps the run moving.
 - The telemetry view shows the complete structured state, legal Choice criteria, probabilities, usage, latency, and a ten-decision trace. It does not invent chain-of-thought text that Jev does not return.
