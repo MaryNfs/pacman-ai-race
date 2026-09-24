@@ -39,22 +39,22 @@ The API key stays on the local Node server. It is never included in frontend Jav
 
 - Code calculates legal moves, food distance, and ghost risk—the exact work Jev's documentation recommends keeping deterministic.
 - Corridors and forced turns are handled locally, so Jev is called only when there is a meaningful choice.
-- At each junction, the local server sends compact structured state and one typed `choice` question through the official `@typesafe-ai/sdk`.
+- Before each upcoming junction, the local server sends compact structured state and one typed `choice` question through the official `@typesafe-ai/sdk`.
 - The model can return only a legal direction. The server validates that invariant before the browser acts.
-- The maze pauses while a decision is in flight, making network latency fair and the decision easy to inspect.
-- If a request fails, a visible local safety fallback keeps the run moving; it is never presented as a Jev result.
+- Pacman, ghosts, timers, and collisions keep moving while Jev plans ahead. If an answer misses the junction deadline, a visible local safety fallback keeps the run moving.
+- The telemetry view shows the complete structured state, legal Choice criteria, probabilities, usage, latency, and a ten-decision trace. It does not invent chain-of-thought text that Jev does not return.
 
 Reference: [TypeSafe JavaScript SDK](https://docs.typesafe.ai/sdk/javascript) and [Choice primitive](https://docs.typesafe.ai/primitives/choice).
 
 ## Controls
 
-- Arrow keys or `WASD`: move
+- Arrow keys or `WASD`: move exactly one tile per press; holding a key does not auto-run
 - `P` or Space: pause/resume
 - On small screens, use the on-screen direction pad
 
 ## Development
 
-No install step is required. Run all checks with:
+After installing dependencies, run all checks with:
 
 ```sh
 npm run check

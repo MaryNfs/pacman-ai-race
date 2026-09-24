@@ -30,6 +30,7 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
   });
 
   return {
+    meta: { row: player.row, col: player.col },
     state: {
       game: "Pacman maze chase",
       objective: "Survive and clear every food dot.",
@@ -55,6 +56,26 @@ export function chooseSafeFallback(assessments, frightened = false) {
       ? { direction: candidate.direction, score: candidateScore }
       : best;
   }, null)?.direction;
+}
+
+export function findNextJunction(player, initialDirection, rows = LEVEL_MAP) {
+  let row = player.row;
+  let col = player.col;
+  let direction = initialDirection;
+  const limit = rows[0].length * rows.length;
+
+  for (let steps = 0; steps < limit; steps += 1) {
+    const next = nextCell(row, col, direction, rows);
+    if (!isWalkable(next.row, next.col, "player", rows)) return null;
+    row = next.row;
+    col = next.col;
+    const forward = availableDirections(row, col, "player", rows)
+      .filter((option) => option !== OPPOSITE[direction]);
+    if (forward.length >= 2) return { row, col, direction };
+    if (forward.length === 0) return null;
+    direction = forward[0];
+  }
+  return null;
 }
 
 export function nearestDistance(start, targets, rows = LEVEL_MAP) {
@@ -119,4 +140,3 @@ function utility(assessment, frightened) {
   const powerValue = !frightened && Number.isFinite(assessment.powerDistance) ? -assessment.powerDistance : 0;
   return ghostValue + pelletValue + powerValue;
 }
-

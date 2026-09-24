@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDecisionRequest, chooseSafeFallback, nearestDistance } from "../ai-state.js";
+import { buildDecisionRequest, chooseSafeFallback, findNextJunction, nearestDistance } from "../ai-state.js";
 import { cellKey, parseLevel } from "../game-core.js";
 
 test("decision state exposes only legal forward choices with semantic labels", () => {
@@ -39,4 +39,9 @@ test("fallback can pursue edible ghosts during power mode", () => {
     { direction: "right", ghostDistance: 7, pelletDistance: 1, powerDistance: Infinity },
   ], true);
   assert.equal(direction, "left");
+});
+
+test("Jev planning can find the next decision point before arrival", () => {
+  const junction = findNextJunction({ row: 15, col: 10 }, "left");
+  assert.deepEqual(junction, { row: 15, col: 9, direction: "left" });
 });

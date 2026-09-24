@@ -44,11 +44,13 @@ export function validateDecisionPayload(payload) {
 
 export function createJevService({ apiKey = process.env.TYPESAFE_API_KEY, client } = {}) {
   const configured = Boolean(apiKey?.trim() || client);
+  const configuredBaseUrl = process.env.TYPESAFE_BASE_URL?.trim();
   const typeSafe = client || (configured ? new TypeSafeClient({
     apiKey,
     defaultModel: JEV_MODEL,
     timeout: 6_000,
     logLevel: "off",
+    ...(configuredBaseUrl ? { baseURL: configuredBaseUrl } : {}),
   }) : null);
 
   return {
@@ -103,4 +105,3 @@ function requestError(message) {
   error.code = "INVALID_DECISION_REQUEST";
   return error;
 }
-
