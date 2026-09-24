@@ -6,9 +6,10 @@ export const DIRECTIONS = new Set(["up", "down", "left", "right"]);
 const decisionInstructions = {
   task: "Choose Pacman's best two-junction route. Pacman will execute the first move, then replan with fresh state.",
   priorities: [
-    "Avoid routes with predicted active-ghost collision risk before pursuing food.",
-    "When ghosts are frightened, prefer a reachable interception that finishes before power mode expires.",
-    "Otherwise prefer food yield, progress toward remaining food anywhere in the maze, power-pellet access, multiple exits, and low recent-path repetition.",
+    "In normal mode, avoid predicted active-ghost collision risk before pursuing food.",
+    "In power mode, prefer a safe edible-ghost interception that finishes before power mode expires.",
+    "Use the code strategic rank as the default ordering; it already combines safety, food progress, nearby-dot cleanup, escape options, and repetition.",
+    "Do not choose a HIGH LOOP RISK route unless every lower-loop alternative has materially worse ghost timing.",
     "During the final dots, strongly prefer routes that reduce maze distance to the nearest remaining dot, even when the route itself collects no food yet.",
     "Choose exactly one supplied route candidate.",
   ],

@@ -61,7 +61,7 @@ test("late-game routes know which plan approaches a distant final dot", () => {
 
   assert.equal(closer.nearestRemainingFoodRegion, "top-left");
   assert.ok(closer.nearestRemainingFoodDistance < farther.nearestRemainingFoodDistance);
-  assert.match(closer.summary, /nearest remaining food/);
+  assert.match(closer.summary, /travel tiles to the next food/);
 });
 
 test("late-game fallback prefers progress toward the final dot", () => {
@@ -70,4 +70,24 @@ test("late-game fallback prefers progress toward the final dot", () => {
     { id: "away", safetyMargin: 3, pelletCount: 0, powerPelletCount: 0, escapeRoutes: 2, repeatedCells: 0, remainingFoodAfterRoute: 1, nearestRemainingFoodDistance: 14, nearbyRemainingFood: 0 },
   ]);
   assert.equal(selected.id, "toward");
+});
+
+test("projected recent corridors expose and demote no-progress reversals", () => {
+  const level = parseLevel();
+  const recentTrail = ["15,12", "15,11", "15,10", "15,9"];
+  recentTrail.forEach((key) => level.pellets.delete(key));
+  const routes = enumerateRouteCandidates({
+    player: { row: 15, col: 9, direction: "left" },
+    ghosts: [{ row: 9, col: 10, speed: 5.2 }],
+    pellets: level.pellets,
+    powerPellets: level.powerPellets,
+    recentTrail,
+  });
+  const reversal = routes.find((route) => route.id === "right_then_left");
+  const progressing = routes.find((route) => route.id === "left_then_down");
+
+  assert.equal(reversal.immediateReverse, true);
+  assert.match(reversal.loopRisk, /HIGH LOOP RISK/);
+  assert.ok(reversal.strategicRank > progressing.strategicRank);
+  assert.match(routes[0].summary, /code strategic rank 1/);
 });

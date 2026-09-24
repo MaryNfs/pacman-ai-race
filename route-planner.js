@@ -16,6 +16,9 @@ export function enumerateRouteCandidates({
     distances: buildDistanceMap({ row: Math.round(ghost.row), col: Math.round(ghost.col) }, "ghost", rows),
   }));
   const trail = new Set(recentTrail);
+  const food = new Set([...pellets, ...powerPellets]);
+  const originDistances = buildDistanceMap(player, "player", rows);
+  const localFood = new Set([...food].filter((key) => (originDistances.get(key) ?? Infinity) <= 8));
   const routes = [];
 
   for (const firstMove of availableDirections(player.row, player.col, "player", rows)) {
@@ -33,6 +36,8 @@ export function enumerateRouteCandidates({
         powerPellets,
         frightenedFor,
         trail,
+        localFood,
+        currentHeading: player.direction,
         playerSpeed,
         planningLeadTime,
         rows,
@@ -52,6 +57,8 @@ export function enumerateRouteCandidates({
         powerPellets,
         frightenedFor,
         trail,
+        localFood,
+        currentHeading: player.direction,
         playerSpeed,
         planningLeadTime,
         rows,
@@ -59,7 +66,7 @@ export function enumerateRouteCandidates({
     }
   }
 
-  return routes;
+  return rankRoutes(routes, frightenedFor > 0);
 }
 
 export function traceCorridor(start, initialDirection, rows = LEVEL_MAP) {
@@ -87,20 +94,12 @@ export function traceCorridor(start, initialDirection, rows = LEVEL_MAP) {
 
 export function chooseRouteFallback(routes, frightened = false) {
   return routes.reduce((best, route) => {
-    const safety = Number.isFinite(route.safetyMargin) ? route.safetyMargin : 20;
-    const ghostValue = frightened ? -Math.abs(safety) : safety * 8;
-    const remainingFood = Number.isFinite(route.remainingFoodAfterRoute) ? route.remainingFoodAfterRoute : Infinity;
-    const foodDistance = Number.isFinite(route.nearestRemainingFoodDistance) ? route.nearestRemainingFoodDistance : 0;
-    const finalHuntWeight = remainingFood <= 40 ? 5 : 2;
-    const globalFoodValue = remainingFood === 0
-      ? 100
-      : (Number.isFinite(remainingFood) ? -foodDistance * finalHuntWeight + route.nearbyRemainingFood * 1.5 : 0);
-    const value = ghostValue + route.pelletCount * 3 + route.powerPelletCount * 12 + route.escapeRoutes * 2 - route.repeatedCells * 2 + globalFoodValue;
+    const value = routeUtility(route, frightened);
     return !best || value > best.value ? { route, value } : best;
   }, null)?.route;
 }
 
-function assessRoute({ id, directions, path, endpoint, ghosts, pellets, powerPellets, frightenedFor, trail, playerSpeed, planningLeadTime, rows }) {
+function assessRoute({ id, directions, path, endpoint, ghosts, pellets, powerPellets, frightenedFor, trail, localFood, currentHeading, playerSpeed, planningLeadTime, rows }) {
   const uniquePath = [...new Map(path.map((cell) => [cellKey(cell.row, cell.col), cell])).values()];
   const pelletCount = uniquePath.filter((cell) => pellets.has(cellKey(cell.row, cell.col))).length;
   const powerPelletCount = uniquePath.filter((cell) => powerPellets.has(cellKey(cell.row, cell.col))).length;
@@ -108,12 +107,17 @@ function assessRoute({ id, directions, path, endpoint, ghosts, pellets, powerPel
   const escapeRoutes = availableDirections(endpoint.row, endpoint.col, "player", rows).length;
   const duration = path.length / playerSpeed;
   const safetyMargin = calculateSafetyMargin(path, ghosts, playerSpeed, planningLeadTime);
-  const futureFood = assessFutureFood(endpoint, uniquePath, pellets, powerPellets, rows);
+  const futureFood = assessFutureFood(endpoint, path, pellets, powerPellets, rows);
+  const localFoodCollected = uniquePath.filter((cell) => localFood.has(cellKey(cell.row, cell.col))).length;
+  const localFoodLeftBehind = Math.max(0, localFood.size - localFoodCollected);
+  const immediateReverse = directions[0] === OPPOSITE[currentHeading];
   const ghostRisk = describeRouteRisk(safetyMargin, frightenedFor, duration);
   const foodYield = describeYield(pelletCount);
   const powerYield = powerPelletCount > 0 ? "collects a power pellet" : "collects no power pellet";
   const escapeQuality = escapeRoutes >= 3 ? "many exits" : escapeRoutes === 2 ? "two exits" : "a dead end";
   const repetition = repeatedCells === 0 ? "avoids the recent path" : repeatedCells >= Math.ceil(uniquePath.length / 2) ? "mostly repeats the recent path" : "partly repeats the recent path";
+  const localFoodCoverage = describeLocalFood(localFood.size, localFoodCollected, localFoodLeftBehind);
+  const loopRisk = describeLoopRisk(immediateReverse, repeatedCells, uniquePath.length, pelletCount + powerPelletCount);
   const label = directions.join(" then ");
 
   return {
@@ -125,6 +129,12 @@ function assessRoute({ id, directions, path, endpoint, ghosts, pellets, powerPel
     pelletCount,
     powerPelletCount,
     repeatedCells,
+    immediateReverse,
+    loopRisk,
+    localFoodTotal: localFood.size,
+    localFoodCollected,
+    localFoodLeftBehind,
+    localFoodCoverage,
     escapeRoutes,
     duration,
     safetyMargin,
@@ -134,13 +144,51 @@ function assessRoute({ id, directions, path, endpoint, ghosts, pellets, powerPel
     powerYield,
     escapeQuality,
     repetition,
-    summary: `${label}: ${ghostRisk}; ${foodYield}; ${powerYield}; ${futureFood.globalFoodProgress}; ends with ${escapeQuality}; ${repetition}.`,
+    summary: `${label}: ${ghostRisk}; ${foodYield}; ${powerYield}; ${futureFood.globalFoodProgress}; ${localFoodCoverage}; ${loopRisk}; ends with ${escapeQuality}; ${repetition}.`,
   };
 }
 
+function rankRoutes(routes, frightened) {
+  return routes
+    .map((route) => ({ ...route, strategicScore: Math.round(routeUtility(route, frightened)) }))
+    .sort((a, b) => b.strategicScore - a.strategicScore || a.id.localeCompare(b.id))
+    .map((route, index, ranked) => ({
+      ...route,
+      strategicRank: index + 1,
+      summary: `code strategic rank ${index + 1} of ${ranked.length} (score ${route.strategicScore}); ${route.summary}`,
+    }));
+}
+
+function routeUtility(route, frightened) {
+  const safety = Number.isFinite(route.safetyMargin) ? route.safetyMargin : 3;
+  const ghostValue = frightened
+    ? -Math.abs(safety) * 6
+    : safety <= 0.35
+      ? -180 + Math.max(-3, safety) * 10
+      : safety <= 1.25
+        ? -45 + safety * 10
+        : Math.min(3, safety) * 25;
+  const remainingFood = Number.isFinite(route.remainingFoodAfterRoute) ? route.remainingFoodAfterRoute : Infinity;
+  const foodTravel = Number.isFinite(route.estimatedTilesToNextFood)
+    ? route.estimatedTilesToNextFood
+    : (Number.isFinite(route.nearestRemainingFoodDistance) ? route.nearestRemainingFoodDistance : 0);
+  const finalHuntWeight = remainingFood <= 40 ? 5 : 1.5;
+  const globalFoodValue = remainingFood === 0
+    ? 120
+    : (Number.isFinite(remainingFood) ? -foodTravel * finalHuntWeight + (route.nearbyRemainingFood || 0) : 0);
+  const collectionValue = (route.pelletCount || 0) * 16 + (route.powerPelletCount || 0) * 32;
+  const localCompletionValue = -(route.localFoodLeftBehind || 0) * 7;
+  const repetitionPenalty = (route.repeatedCells || 0) * 6;
+  const emptyReversePenalty = route.immediateReverse && collectionValue === 0 ? 28 : 0;
+  return ghostValue + collectionValue + globalFoodValue + localCompletionValue
+    + (route.escapeRoutes || 0) * 2 - repetitionPenalty - emptyReversePenalty;
+}
+
 function assessFutureFood(endpoint, routeCells, pellets, powerPellets, rows) {
+  const allFood = new Set([...pellets, ...powerPellets]);
+  const firstFoodIndex = routeCells.findIndex((cell) => allFood.has(cellKey(cell.row, cell.col)));
   const collectedKeys = new Set(routeCells.map((cell) => cellKey(cell.row, cell.col)));
-  const remainingFood = new Set([...pellets, ...powerPellets].filter((key) => !collectedKeys.has(key)));
+  const remainingFood = new Set([...allFood].filter((key) => !collectedKeys.has(key)));
 
   if (remainingFood.size === 0) {
     return {
@@ -148,7 +196,8 @@ function assessFutureFood(endpoint, routeCells, pellets, powerPellets, rows) {
       nearestRemainingFoodDistance: 0,
       nearestRemainingFoodRegion: "none — route clears the maze",
       nearbyRemainingFood: 0,
-      globalFoodProgress: "clears every remaining dot",
+      estimatedTilesToNextFood: firstFoodIndex >= 0 ? firstFoodIndex + 1 : 0,
+      globalFoodProgress: `clears every remaining dot; next food is reached in ${firstFoodIndex + 1} travel tiles`,
     };
   }
 
@@ -168,8 +217,11 @@ function assessFutureFood(endpoint, routeCells, pellets, powerPellets, rows) {
   }
 
   const nearestRemainingFoodRegion = nearestKey ? mazeRegion(nearestKey, rows) : "unreachable";
+  const estimatedTilesToNextFood = firstFoodIndex >= 0
+    ? firstFoodIndex + 1
+    : routeCells.length + nearestDistance;
   const globalFoodProgress = Number.isFinite(nearestDistance)
-    ? `nearest remaining food after this route is ${nearestDistance} maze tiles away in the ${nearestRemainingFoodRegion}; ${nearbyRemainingFood} remaining dots are within 8 tiles`
+    ? `estimated ${estimatedTilesToNextFood} total travel tiles to the next food; nearest food after this route is ${nearestDistance} tiles away in the ${nearestRemainingFoodRegion}; ${nearbyRemainingFood} remaining dots are within 8 tiles`
     : "remaining food is unreachable from this endpoint";
 
   return {
@@ -177,6 +229,7 @@ function assessFutureFood(endpoint, routeCells, pellets, powerPellets, rows) {
     nearestRemainingFoodDistance: nearestDistance,
     nearestRemainingFoodRegion,
     nearbyRemainingFood,
+    estimatedTilesToNextFood,
     globalFoodProgress,
   };
 }
@@ -227,4 +280,20 @@ function describeYield(count) {
   if (count >= 3) return "collects several food dots";
   if (count >= 1) return "collects few food dots";
   return "collects no food dots";
+}
+
+function describeLocalFood(total, collected, leftBehind) {
+  if (total === 0) return "no food was within 8 tiles of the starting junction";
+  if (leftBehind === 0) return `clears all ${total} dots that were within 8 tiles of the starting junction`;
+  return `collects ${collected} of ${total} nearby starting dots and leaves ${leftBehind} behind`;
+}
+
+function describeLoopRisk(immediateReverse, repeatedCells, pathLength, foodCollected) {
+  if (immediateReverse && foodCollected === 0 && repeatedCells >= Math.max(1, Math.ceil(pathLength / 3))) {
+    return "HIGH LOOP RISK: immediately reverses through a recent corridor without collecting food";
+  }
+  if (repeatedCells >= Math.max(2, Math.ceil(pathLength / 2))) {
+    return "moderate loop risk from repeating much of the recent path";
+  }
+  return "low loop risk";
 }

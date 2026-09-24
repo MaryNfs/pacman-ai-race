@@ -22,6 +22,7 @@ test("decision state exposes every walkable choice, including a U-turn", () => {
   assert.ok(Object.keys(decision.state.routeCandidates).length > 3);
   assert.equal(typeof Object.values(decision.state.routeCandidates)[0].nearestGhostLeadSeconds, "number");
   assert.equal(typeof Object.values(decision.state.routeCandidates)[0].nearestRemainingDotDistance, "number");
+  assert.equal(Object.values(decision.state.routeCandidates)[0].codeStrategicRank, 1);
   assert.equal(decision.state.wholeMazeFoodScan.mapTopToBottom.length, 23);
 });
 
@@ -47,5 +48,5 @@ test("nearest distance is calculated in code around maze walls", () => {
 
 test("Jev planning can find the next decision point before arrival", () => {
   const junction = findNextJunction({ row: 15, col: 10 }, "left");
-  assert.deepEqual(junction, { row: 15, col: 9, direction: "left", steps: 1 });
+  assert.deepEqual(junction, { row: 15, col: 9, direction: "left", steps: 1, path: [{ row: 15, col: 9 }] });
 });

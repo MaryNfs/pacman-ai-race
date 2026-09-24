@@ -296,7 +296,7 @@ function ensureJevPrefetch(player, direction) {
     frightenedFor: state.frightenedFor,
     level: state.level,
     score: state.score,
-    recentTrail: state.trail,
+    recentTrail: [...state.trail, ...target.path.map((cell) => cellKey(cell.row, cell.col))],
     playerSpeed: player.speed,
     planningLeadTime: target.steps / player.speed,
   });

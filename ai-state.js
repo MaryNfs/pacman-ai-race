@@ -64,17 +64,18 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
         nearestGhostLeadSeconds: Number.isFinite(route.safetyMargin) ? rounded(route.safetyMargin) : "unreachable",
         ghostTiming: route.ghostRisk,
         foodDots: route.pelletCount,
-        foodYield: route.foodYield,
         powerPellets: route.powerPelletCount,
-        powerPellet: route.powerYield,
         remainingDotsAfterRoute: route.remainingFoodAfterRoute,
+        estimatedTravelTilesToNextDot: route.estimatedTilesToNextFood,
         nearestRemainingDotDistance: route.nearestRemainingFoodDistance,
         nearestRemainingDotRegion: route.nearestRemainingFoodRegion,
         remainingDotsWithin8Tiles: route.nearbyRemainingFood,
         destinationExitCount: route.escapeRoutes,
-        destinationEscapeRoutes: route.escapeQuality,
         recentPathTiles: route.repeatedCells,
-        recentPathOverlap: route.repetition,
+        immediateReverse: route.immediateReverse,
+        nearbyStartingDotsLeftBehind: route.localFoodLeftBehind,
+        codeStrategicRank: route.strategicRank,
+        codeStrategicScore: route.strategicScore,
       }])),
     },
     routeChoices: routes.map(({ id, direction, directions, summary }) => ({ id, direction, directions, summary })),
@@ -118,6 +119,7 @@ export function findNextJunction(player, initialDirection, rows = LEVEL_MAP) {
   let row = player.row;
   let col = player.col;
   let direction = initialDirection;
+  const path = [];
   const limit = rows[0].length * rows.length;
 
   for (let steps = 0; steps < limit; steps += 1) {
@@ -125,9 +127,10 @@ export function findNextJunction(player, initialDirection, rows = LEVEL_MAP) {
     if (!isWalkable(next.row, next.col, "player", rows)) return null;
     row = next.row;
     col = next.col;
+    path.push({ row, col });
     const forward = availableDirections(row, col, "player", rows)
       .filter((option) => option !== OPPOSITE[direction]);
-    if (forward.length >= 2) return { row, col, direction, steps: steps + 1 };
+    if (forward.length >= 2) return { row, col, direction, steps: steps + 1, path };
     if (forward.length === 0) return null;
     direction = forward[0];
   }
