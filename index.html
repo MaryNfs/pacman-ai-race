@@ -127,7 +127,7 @@
         <div class="decision-flow" aria-label="Jev decision flow">
           <span><b>1</b> Code measures the maze</span>
           <i aria-hidden="true">→</i>
-          <span><b>2</b> Jev chooses a legal move</span>
+          <span><b>2</b> Jev chooses a simulated route</span>
           <i aria-hidden="true">→</i>
           <span><b>3</b> The game validates and acts</span>
         </div>
@@ -144,12 +144,12 @@
 
           <article class="telemetry-card">
             <div class="telemetry-card-heading">
-              <h3>Legal candidates</h3>
+              <h3>Two-junction routes</h3>
               <span>Choice</span>
             </div>
-            <p class="telemetry-help">Jev can select only from these validated directions. Each description is part of the typed Choice criteria.</p>
+            <p class="telemetry-help">Code simulates each legal two-junction route. These summaries become Jev's typed Choice criteria.</p>
             <ul class="candidate-details" id="jevCandidateDetails">
-              <li class="empty-candidate">Legal moves and their computed risk summaries will appear here.</li>
+              <li class="empty-candidate">Simulated routes and their risk summaries will appear here.</li>
             </ul>
           </article>
 
@@ -176,7 +176,7 @@
           </div>
           <div class="table-scroll">
             <table>
-              <thead><tr><th>#</th><th>Cell</th><th>Candidates</th><th>Chosen</th><th>Confidence</th><th>Latency</th><th>Model</th></tr></thead>
+              <thead><tr><th>#</th><th>Cell</th><th>Candidates</th><th>Chosen route</th><th>Confidence</th><th>Latency</th><th>Model</th></tr></thead>
               <tbody id="jevDecisionLog"><tr><td colspan="7">No junction decisions yet.</td></tr></tbody>
             </table>
           </div>

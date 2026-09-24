@@ -4,14 +4,14 @@ export const JEV_MODEL = process.env.TYPESAFE_MODEL?.trim() || "jev-latest";
 export const DIRECTIONS = new Set(["up", "down", "left", "right"]);
 
 const decisionInstructions = {
-  task: "Choose Pacman's next move at this maze junction.",
+  task: "Choose Pacman's best two-junction route. Pacman will execute the first move, then replan with fresh state.",
   priorities: [
-    "Avoid a nearby active ghost before pursuing food.",
-    "When ghosts are frightened, prefer a safe opportunity to catch one.",
-    "Otherwise prefer routes toward power dots, then routes toward regular dots.",
-    "Choose exactly one of the supplied legal moves.",
+    "Avoid routes with predicted active-ghost collision risk before pursuing food.",
+    "When ghosts are frightened, prefer a reachable interception that finishes before power mode expires.",
+    "Otherwise prefer food yield, power-pellet access, multiple exits, and low recent-path repetition.",
+    "Choose exactly one supplied route candidate.",
   ],
-  note: "Distances and danger labels were calculated by the game. Treat them as facts; do not recalculate them.",
+  note: "Route simulation, timing, food counts, and escape routes were calculated by the game. Treat them as facts; do not recalculate them.",
 };
 
 export function validateDecisionPayload(payload) {
@@ -21,19 +21,25 @@ export function validateDecisionPayload(payload) {
   if (!payload.state || typeof payload.state !== "object" || Array.isArray(payload.state)) {
     throw requestError("state must be an object.");
   }
-  if (!Array.isArray(payload.legalMoves) || payload.legalMoves.length < 2 || payload.legalMoves.length > 4) {
-    throw requestError("legalMoves must contain between two and four moves.");
+  if (!Array.isArray(payload.routeCandidates) || payload.routeCandidates.length < 2 || payload.routeCandidates.length > 16) {
+    throw requestError("routeCandidates must contain between two and sixteen routes.");
   }
 
   const seen = new Set();
-  for (const move of payload.legalMoves) {
-    if (!move || !DIRECTIONS.has(move.direction) || seen.has(move.direction)) {
-      throw requestError("Every legal move must have a unique valid direction.");
+  for (const move of payload.routeCandidates) {
+    if (!move || typeof move.id !== "string" || !/^[a-z]+(?:_then_[a-z]+)?$/.test(move.id) || seen.has(move.id)) {
+      throw requestError("Every route candidate must have a unique valid id.");
     }
-    if (typeof move.summary !== "string" || move.summary.length < 1 || move.summary.length > 300) {
-      throw requestError("Every legal move needs a short summary.");
+    if (!DIRECTIONS.has(move.direction) || !Array.isArray(move.directions) || move.directions.length < 1 || move.directions.length > 2) {
+      throw requestError("Every route candidate must contain one or two valid directions.");
     }
-    seen.add(move.direction);
+    if (move.directions.some((direction) => !DIRECTIONS.has(direction)) || move.directions[0] !== move.direction) {
+      throw requestError("Route directions must be valid and start with direction.");
+    }
+    if (typeof move.summary !== "string" || move.summary.length < 1 || move.summary.length > 500) {
+      throw requestError("Every route candidate needs a short summary.");
+    }
+    seen.add(move.id);
   }
 
   if (JSON.stringify(payload.state).length > 12_000) {
@@ -65,26 +71,29 @@ export function createJevService({ apiKey = process.env.TYPESAFE_API_KEY, client
       }
 
       const payload = validateDecisionPayload(rawPayload);
-      const criteria = Object.fromEntries(payload.legalMoves.map(({ direction, summary }) => [direction, summary]));
+      const criteria = Object.fromEntries(payload.routeCandidates.map(({ id, summary }) => [id, summary]));
       const startedAt = performance.now();
       const result = await typeSafe.systemOne({
         model: JEV_MODEL,
         state: payload.state,
         questions: {
-          direction: choice(decisionInstructions, criteria),
+          route: choice(decisionInstructions, criteria),
         },
       });
 
-      const answer = result.answers?.direction;
-      if (!answer || !seenDirection(payload.legalMoves, answer.choice)) {
-        const error = new Error("Jev returned a direction outside the legal move set.");
+      const answer = result.answers?.route;
+      const selectedRoute = payload.routeCandidates.find((move) => move.id === answer?.choice);
+      if (!answer || !selectedRoute) {
+        const error = new Error("Jev returned a route outside the supplied candidate set.");
         error.statusCode = 502;
         error.code = "INVALID_JEV_RESPONSE";
         throw error;
       }
 
       return {
-        direction: answer.choice,
+        routeId: answer.choice,
+        direction: selectedRoute.direction,
+        directions: selectedRoute.directions,
         probabilities: answer.probabilities,
         confidence: answer.confidence,
         model: result.model,
@@ -93,10 +102,6 @@ export function createJevService({ apiKey = process.env.TYPESAFE_API_KEY, client
       };
     },
   };
-}
-
-function seenDirection(moves, direction) {
-  return DIRECTIONS.has(direction) && moves.some((move) => move.direction === direction);
 }
 
 function requestError(message) {

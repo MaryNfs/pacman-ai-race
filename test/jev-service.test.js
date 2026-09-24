@@ -3,22 +3,22 @@ import assert from "node:assert/strict";
 import { createJevService, validateDecisionPayload } from "../jev-service.js";
 
 const validPayload = {
-  state: { mode: "normal", legalMoveAssessments: { left: "safe", right: "danger" } },
-  legalMoves: [
-    { direction: "left", summary: "left: safe and near food" },
-    { direction: "right", summary: "right: ghost danger" },
+  state: { mode: "normal", routeCandidates: { left_then_up: "safe", right_then_down: "danger" } },
+  routeCandidates: [
+    { id: "left_then_up", direction: "left", directions: ["left", "up"], summary: "left then up: safe and near food" },
+    { id: "right_then_down", direction: "right", directions: ["right", "down"], summary: "right then down: ghost danger" },
   ],
 };
 
-test("decision payload validation rejects duplicate or unknown directions", () => {
+test("decision payload validation rejects duplicate or malformed routes", () => {
   assert.throws(() => validateDecisionPayload({
     ...validPayload,
-    legalMoves: [validPayload.legalMoves[0], validPayload.legalMoves[0]],
-  }), /unique valid direction/);
+    routeCandidates: [validPayload.routeCandidates[0], validPayload.routeCandidates[0]],
+  }), /unique valid id/);
   assert.throws(() => validateDecisionPayload({
     ...validPayload,
-    legalMoves: [...validPayload.legalMoves, { direction: "teleport", summary: "not legal" }],
-  }), /unique valid direction/);
+    routeCandidates: [...validPayload.routeCandidates, { id: "teleport", direction: "teleport", directions: ["teleport"], summary: "not legal" }],
+  }), /valid directions/);
 });
 
 test("Jev service returns the typed choice and decision metadata", async () => {
@@ -30,10 +30,10 @@ test("Jev service returns the typed choice and decision metadata", async () => {
         return {
           model: "jev-test",
           answers: {
-            direction: {
-              choice: "left",
+            route: {
+              choice: "left_then_up",
               confidence: 0.88,
-              probabilities: { left: 0.91, right: 0.09 },
+              probabilities: { left_then_up: 0.91, right_then_down: 0.09 },
             },
           },
           usage: { input_tokens: 100, output_tokens: 8 },
@@ -44,20 +44,21 @@ test("Jev service returns the typed choice and decision metadata", async () => {
 
   const result = await service.decide(validPayload);
   assert.equal(result.direction, "left");
+  assert.equal(result.routeId, "left_then_up");
+  assert.deepEqual(result.directions, ["left", "up"]);
   assert.equal(result.confidence, 0.88);
   assert.equal(result.model, "jev-test");
   assert.equal(calls.length, 1);
-  assert.deepEqual(Object.keys(calls[0].questions.direction.criteria), ["left", "right"]);
+  assert.deepEqual(Object.keys(calls[0].questions.route.criteria), ["left_then_up", "right_then_down"]);
 });
 
 test("Jev service fails closed when the model returns an illegal move", async () => {
   const service = createJevService({
     client: {
       async systemOne() {
-        return { answers: { direction: { choice: "up", probabilities: { up: 1 }, confidence: 1 } } };
+        return { answers: { route: { choice: "up_then_up", probabilities: { up_then_up: 1 }, confidence: 1 } } };
       },
     },
   });
-  await assert.rejects(service.decide(validPayload), /outside the legal move set/);
+  await assert.rejects(service.decide(validPayload), /outside the supplied candidate set/);
 });
-

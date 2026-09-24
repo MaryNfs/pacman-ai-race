@@ -11,7 +11,8 @@ import {
   availableDirections,
   squaredDistance,
 } from "./game-core.js";
-import { buildDecisionRequest, chooseSafeFallback, findNextJunction } from "./ai-state.js";
+import { buildDecisionRequest, findNextJunction } from "./ai-state.js";
+import { chooseRouteFallback } from "./route-planner.js";
 
 const canvas = document.querySelector("#gameCanvas");
 const context = canvas.getContext("2d");
@@ -77,6 +78,7 @@ const state = {
   audio: null,
   controlMode: "manual",
   manualQueue: [],
+  trail: [],
   jev: {
     configured: false,
     model: null,
@@ -113,6 +115,7 @@ function resetActors() {
   state.jev.decisionReady = null;
   state.manualQueue = [];
   state.player = makeEntity(parsed.player, "left", 6.35);
+  state.trail = [cellKey(parsed.player.row, parsed.player.col)];
   state.ghosts = parsed.ghosts.map((position, index) => ({
     ...makeEntity(position, index === 0 ? "up" : index === 1 ? "left" : "right", 5.25 + state.level * 0.1),
     ...ghostStyles[index % ghostStyles.length],
@@ -224,6 +227,8 @@ function updatePlayer(delta) {
 
   moveEntity(player, delta, () => {
     collectAt(player.row, player.col);
+    state.trail.push(cellKey(player.row, player.col));
+    state.trail = state.trail.slice(-16);
   });
 }
 
@@ -244,12 +249,14 @@ function chooseJevStep(player) {
 
   const decision = buildDecisionRequest({
     player,
-    ghosts: state.ghosts.map(renderedPosition),
+    ghosts: state.ghosts.map((ghost) => ({ ...renderedPosition(ghost), direction: ghost.direction, speed: ghost.speed })),
     pellets: state.pellets,
     powerPellets: state.powerPellets,
     frightenedFor: state.frightenedFor,
     level: state.level,
     score: state.score,
+    recentTrail: state.trail,
+    playerSpeed: player.speed,
   });
   const junctionKey = cellKey(player.row, player.col);
   let direction;
@@ -263,8 +270,9 @@ function chooseJevStep(player) {
       state.jev.pending = false;
       state.jev.pendingFor = null;
     }
-    direction = chooseSafeFallback(decision.assessments, state.frightenedFor > 0);
-    showFallbackDecision(direction, "Jev did not answer before Pacman reached the junction", decision);
+    const fallbackRoute = chooseRouteFallback(decision.routes, state.frightenedFor > 0);
+    direction = fallbackRoute.direction;
+    showFallbackDecision(fallbackRoute, "Jev did not answer before Pacman reached the junction", decision);
   }
 
   player.direction = direction;
@@ -282,12 +290,15 @@ function ensureJevPrefetch(player, direction) {
 
   const decision = buildDecisionRequest({
     player: target,
-    ghosts: state.ghosts.map(renderedPosition),
+    ghosts: state.ghosts.map((ghost) => ({ ...renderedPosition(ghost), direction: ghost.direction, speed: ghost.speed })),
     pellets: state.pellets,
     powerPellets: state.powerPellets,
     frightenedFor: state.frightenedFor,
     level: state.level,
     score: state.score,
+    recentTrail: state.trail,
+    playerSpeed: player.speed,
+    planningLeadTime: target.steps / player.speed,
   });
   requestJevDecision(decision, junctionKey);
 }
@@ -300,7 +311,7 @@ async function requestJevDecision(decision, junctionKey) {
   state.jev.metrics.requests += 1;
   setJevStatus("thinking", "Thinking");
   elements.jevDecision.textContent = "EVALUATING";
-  elements.jevCaption.textContent = `Planning ${decision.legalMoves.map((move) => move.direction).join(" · ")} ahead of the next junction.`;
+  elements.jevCaption.textContent = `Comparing ${decision.routeChoices.length} two-junction routes ahead of the next turn.`;
   elements.jevActivity.textContent = `Planning ahead for cell ${decision.meta.row},${decision.meta.col} · Pacman and ghosts keep moving.`;
   renderJevInput(decision);
   updateTelemetryMetrics();
@@ -309,18 +320,18 @@ async function requestJevDecision(decision, junctionKey) {
     const response = await fetch("/api/jev/decide", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ state: decision.state, legalMoves: decision.legalMoves }),
+      body: JSON.stringify({ state: decision.state, routeCandidates: decision.routeChoices }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message || "Jev request failed");
     if (requestId !== state.jev.requestId || state.controlMode !== "jev") return;
-    state.jev.decisionReady = { direction: result.direction, junctionKey };
+    state.jev.decisionReady = { direction: result.direction, routeId: result.routeId, junctionKey };
     showJevDecision(result, decision);
   } catch (error) {
     if (requestId !== state.jev.requestId || state.controlMode !== "jev") return;
-    const fallback = chooseSafeFallback(decision.assessments, state.frightenedFor > 0);
-    state.jev.decisionReady = { direction: fallback, junctionKey };
-    showFallbackDecision(fallback, error.message, decision);
+    const fallbackRoute = chooseRouteFallback(decision.routes, state.frightenedFor > 0);
+    state.jev.decisionReady = { direction: fallbackRoute.direction, routeId: fallbackRoute.id, junctionKey };
+    showFallbackDecision(fallbackRoute, error.message, decision);
   } finally {
     if (requestId === state.jev.requestId) {
       state.jev.pending = false;
@@ -617,40 +628,41 @@ function showJevDecision(result, decision) {
   state.jev.metrics.inputTokens += Number(result.usage?.input_tokens) || 0;
   state.jev.metrics.outputTokens += Number(result.usage?.output_tokens) || 0;
   state.jev.metrics.totalLatency += Number(result.latencyMs) || 0;
-  elements.jevDecision.textContent = `${directionArrow(result.direction)} ${result.direction.toUpperCase()}`;
+  elements.jevDecision.textContent = routeLabel(result.routeId);
   elements.jevConfidence.textContent = percent(result.confidence);
   elements.jevLatency.textContent = `${result.latencyMs} ms`;
   elements.jevModel.textContent = result.model || state.jev.model || "Jev";
-  elements.jevCaption.textContent = "Jev returned one typed choice—not generated reasoning.";
-  renderProbabilities(result.probabilities, result.direction);
-  renderCandidateTelemetry(decision.legalMoves, result.probabilities, result.direction);
+  elements.jevCaption.textContent = "Jev selected a two-junction route. Pacman executes its first move, then replans.";
+  renderProbabilities(result.probabilities, result.routeId);
+  renderCandidateTelemetry(decision.routeChoices, result.probabilities, result.routeId);
   addDecisionHistory(result.direction);
   addTelemetryLog({
     decision,
     direction: result.direction,
+    routeId: result.routeId,
     confidence: result.confidence,
     latencyMs: result.latencyMs,
     model: result.model || state.jev.model || "Jev",
     source: "Jev",
   });
-  elements.jevActivity.textContent = `Decision received: ${result.direction}. It is queued for cell ${decision.meta.row},${decision.meta.col}.`;
+  elements.jevActivity.textContent = `Route selected: ${routeLabel(result.routeId)}. First move queued for cell ${decision.meta.row},${decision.meta.col}; then the game replans.`;
   updateTelemetryMetrics();
   setJevStatus("ready", "Driving");
-  announce(`Jev chose ${result.direction} with ${percent(result.confidence)} confidence.`);
+  announce(`Jev chose ${routeLabel(result.routeId)} with ${percent(result.confidence)} confidence.`);
 }
 
-function showFallbackDecision(direction, message, decision) {
+function showFallbackDecision(route, message, decision) {
   state.jev.metrics.fallbacks += 1;
-  elements.jevDecision.textContent = `${directionArrow(direction)} ${direction.toUpperCase()}`;
+  elements.jevDecision.textContent = routeLabel(route.id);
   elements.jevConfidence.textContent = "Fallback";
   elements.jevLatency.textContent = "—";
   elements.jevModel.textContent = "Local";
-  elements.jevCaption.textContent = `${message}. Using the safest local move.`;
-  renderProbabilities({ [direction]: 1 }, direction);
-  renderCandidateTelemetry(decision.legalMoves, { [direction]: 1 }, direction);
-  addDecisionHistory(direction);
-  addTelemetryLog({ decision, direction, confidence: null, latencyMs: null, model: "Local safety", source: "Fallback" });
-  elements.jevActivity.textContent = `Jev request failed: ${message}. The local safety policy selected ${direction}.`;
+  elements.jevCaption.textContent = `${message}. Using the safest locally simulated route.`;
+  renderProbabilities({ [route.id]: 1 }, route.id);
+  renderCandidateTelemetry(decision.routeChoices, { [route.id]: 1 }, route.id);
+  addDecisionHistory(route.direction);
+  addTelemetryLog({ decision, direction: route.direction, routeId: route.id, confidence: null, latencyMs: null, model: "Local safety", source: "Fallback" });
+  elements.jevActivity.textContent = `Jev request failed: ${message}. The local safety policy selected ${routeLabel(route.id)}.`;
   updateTelemetryMetrics();
   setJevStatus("error", "Fallback");
 }
@@ -662,7 +674,7 @@ function renderProbabilities(probabilities = {}, selected) {
       const row = document.createElement("div");
       row.className = `probability-row${direction === selected ? " selected" : ""}`;
       const label = document.createElement("span");
-      label.textContent = `${directionArrow(direction)} ${direction}`;
+      label.textContent = routeLabel(direction);
       const track = document.createElement("span");
       track.className = "probability-track";
       const fill = document.createElement("i");
@@ -678,20 +690,20 @@ function renderProbabilities(probabilities = {}, selected) {
 
 function renderJevInput(decision) {
   elements.jevStatePayload.textContent = JSON.stringify(decision.state, null, 2);
-  renderCandidateTelemetry(decision.legalMoves);
+  renderCandidateTelemetry(decision.routeChoices);
 }
 
-function renderCandidateTelemetry(legalMoves, probabilities = {}, selected = null) {
-  const cards = legalMoves.map((move) => {
+function renderCandidateTelemetry(routeChoices, probabilities = {}, selected = null) {
+  const cards = routeChoices.map((move) => {
     const item = document.createElement("li");
-    if (move.direction === selected) item.className = "selected";
+    if (move.id === selected) item.className = "selected";
 
     const heading = document.createElement("div");
     const direction = document.createElement("strong");
-    direction.textContent = `${directionArrow(move.direction)} ${move.direction}`;
+    direction.textContent = routeLabel(move.id);
     const probability = document.createElement("span");
-    probability.textContent = Number.isFinite(probabilities[move.direction])
-      ? percent(probabilities[move.direction])
+    probability.textContent = Number.isFinite(probabilities[move.id])
+      ? percent(probabilities[move.id])
       : "candidate";
     heading.append(direction, probability);
 
@@ -703,12 +715,13 @@ function renderCandidateTelemetry(legalMoves, probabilities = {}, selected = nul
   elements.jevCandidateDetails.replaceChildren(...cards);
 }
 
-function addTelemetryLog({ decision, direction, confidence, latencyMs, model, source }) {
+function addTelemetryLog({ decision, direction, routeId, confidence, latencyMs, model, source }) {
   state.jev.log.unshift({
     number: state.jev.metrics.responses + state.jev.metrics.fallbacks,
     cell: `${decision.meta.row},${decision.meta.col}`,
-    candidates: decision.legalMoves.map((move) => move.direction).join(" / "),
+    candidates: `${decision.routeChoices.length} routes`,
     direction,
+    routeId,
     confidence,
     latencyMs,
     model,
@@ -722,7 +735,7 @@ function addTelemetryLog({ decision, direction, confidence, latencyMs, model, so
       `#${entry.number}`,
       entry.cell,
       entry.candidates,
-      `${directionArrow(entry.direction)} ${entry.direction}`,
+      routeLabel(entry.routeId),
       entry.confidence === null ? "fallback" : percent(entry.confidence),
       entry.latencyMs === null ? "—" : `${entry.latencyMs} ms`,
       entry.model,
@@ -754,7 +767,7 @@ function resetTelemetryDisplay() {
   elements.jevStatePayload.textContent = "Jev has not received a junction state yet.";
   const candidate = document.createElement("li");
   candidate.className = "empty-candidate";
-  candidate.textContent = "Legal moves and their computed risk summaries will appear here.";
+  candidate.textContent = "Simulated routes and their computed risk summaries will appear here.";
   elements.jevCandidateDetails.replaceChildren(candidate);
   const row = document.createElement("tr");
   const cell = document.createElement("td");
@@ -802,6 +815,13 @@ function setJevStatus(kind, label) {
 
 function directionArrow(direction) {
   return { up: "↑", down: "↓", left: "←", right: "→" }[direction] || "·";
+}
+
+function routeLabel(routeId) {
+  if (!routeId) return "—";
+  return routeId.split("_then_")
+    .map((direction) => `${directionArrow(direction)} ${direction.toUpperCase()}`)
+    .join("  ›  ");
 }
 
 function percent(value) {

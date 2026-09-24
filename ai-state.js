@@ -1,6 +1,7 @@
 import { DIRECTIONS, LEVEL_MAP, OPPOSITE, availableDirections, cellKey, isWalkable, nextCell } from "./game-core.js";
+import { enumerateRouteCandidates } from "./route-planner.js";
 
-export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, score }) {
+export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, score, recentTrail = [], playerSpeed = 6.35, planningLeadTime = 0 }) {
   const options = availableDirections(player.row, player.col);
   const frightened = frightenedFor > 0;
 
@@ -26,6 +27,7 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
     };
   });
   const assessmentByDirection = new Map(assessments.map((assessment) => [assessment.direction, assessment]));
+  const routes = enumerateRouteCandidates({ player, ghosts, pellets, powerPellets, frightenedFor, recentTrail, playerSpeed, planningLeadTime });
 
   return {
     meta: { row: player.row, col: player.col },
@@ -35,6 +37,10 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
       mode: frightened ? "power mode: ghosts are edible" : "normal mode: ghosts are dangerous",
       progress: progressLabel(pellets.size + powerPellets.size),
       currentHeading: player.direction,
+      forecast: {
+        planStartsInSeconds: rounded(planningLeadTime),
+        method: "conservative shortest-path ghost timing from the live snapshot",
+      },
       level: level > 3 ? "advanced speed" : level > 1 ? "increased speed" : "base speed",
       scoreBand: score >= 5_000 ? "high score run" : score >= 1_000 ? "established run" : "early run",
       directionAssessments: Object.fromEntries(Object.keys(DIRECTIONS).map((direction) => {
@@ -49,9 +55,26 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
             }
           : { availability: "blocked by wall" }];
       })),
+      routeCandidates: Object.fromEntries(routes.map((route) => [route.id, {
+        firstMove: route.directions[0],
+        secondMove: route.directions[1] || "none",
+        routeTiles: route.path.length,
+        routeDurationSeconds: rounded(route.duration),
+        nearestGhostLeadSeconds: Number.isFinite(route.safetyMargin) ? rounded(route.safetyMargin) : "unreachable",
+        ghostTiming: route.ghostRisk,
+        foodDots: route.pelletCount,
+        foodYield: route.foodYield,
+        powerPellets: route.powerPelletCount,
+        powerPellet: route.powerYield,
+        destinationExitCount: route.escapeRoutes,
+        destinationEscapeRoutes: route.escapeQuality,
+        recentPathTiles: route.repeatedCells,
+        recentPathOverlap: route.repetition,
+      }])),
     },
-    legalMoves: assessments.map(({ direction, summary }) => ({ direction, summary })),
+    routeChoices: routes.map(({ id, direction, directions, summary }) => ({ id, direction, directions, summary })),
     assessments,
+    routes,
   };
 }
 
@@ -59,15 +82,6 @@ function describeManeuver(direction, currentHeading) {
   if (direction === currentHeading) return "continues forward";
   if (direction === OPPOSITE[currentHeading]) return "reverses direction with a U-turn";
   return "turns at the junction";
-}
-
-export function chooseSafeFallback(assessments, frightened = false) {
-  return assessments.reduce((best, candidate) => {
-    const candidateScore = utility(candidate, frightened);
-    return !best || candidateScore > best.score
-      ? { direction: candidate.direction, score: candidateScore }
-      : best;
-  }, null)?.direction;
 }
 
 export function findNextJunction(player, initialDirection, rows = LEVEL_MAP) {
@@ -83,11 +97,15 @@ export function findNextJunction(player, initialDirection, rows = LEVEL_MAP) {
     col = next.col;
     const forward = availableDirections(row, col, "player", rows)
       .filter((option) => option !== OPPOSITE[direction]);
-    if (forward.length >= 2) return { row, col, direction };
+    if (forward.length >= 2) return { row, col, direction, steps: steps + 1 };
     if (forward.length === 0) return null;
     direction = forward[0];
   }
   return null;
+}
+
+function rounded(value) {
+  return Math.round(value * 100) / 100;
 }
 
 export function nearestDistance(start, targets, rows = LEVEL_MAP) {
@@ -142,13 +160,4 @@ function progressLabel(remaining) {
   if (remaining < 40) return "final dots";
   if (remaining < 110) return "mid-maze";
   return "early maze";
-}
-
-function utility(assessment, frightened) {
-  const ghostValue = Number.isFinite(assessment.ghostDistance)
-    ? (frightened ? -assessment.ghostDistance * 2 : assessment.ghostDistance * 5)
-    : 50;
-  const pelletValue = Number.isFinite(assessment.pelletDistance) ? -assessment.pelletDistance * 2 : -100;
-  const powerValue = !frightened && Number.isFinite(assessment.powerDistance) ? -assessment.powerDistance : 0;
-  return ghostValue + pelletValue + powerValue;
 }
