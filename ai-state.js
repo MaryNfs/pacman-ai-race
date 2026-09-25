@@ -116,25 +116,53 @@ function describeManeuver(direction, currentHeading) {
 }
 
 export function findNextJunction(player, initialDirection, rows = LEVEL_MAP) {
+  return scanCorridor(player, initialDirection, rows).junction;
+}
+
+export function findCorridorThreat(player, initialDirection, ghosts, playerSpeed = 6.35, frightenedFor = 0, rows = LEVEL_MAP) {
+  const scan = scanCorridor(player, initialDirection, rows);
+  for (const checkpoint of scan.checkpoints) {
+    const playerArrival = checkpoint.steps / playerSpeed;
+    if (frightenedFor > playerArrival) continue;
+
+    let nearestLead = Infinity;
+    for (const ghost of ghosts) {
+      const target = new Set([cellKey(Math.round(ghost.row), Math.round(ghost.col))]);
+      const distance = nearestDistance(checkpoint, target, rows);
+      const ghostArrival = distance / Math.max(ghost.speed || 5.2, 0.1);
+      nearestLead = Math.min(nearestLead, ghostArrival - playerArrival);
+    }
+
+    if (nearestLead <= 0.9) {
+      return { ...checkpoint, ghostLeadSeconds: rounded(nearestLead) };
+    }
+  }
+  return null;
+}
+
+function scanCorridor(player, initialDirection, rows) {
   let row = player.row;
   let col = player.col;
   let direction = initialDirection;
   const path = [];
+  const checkpoints = [];
   const limit = rows[0].length * rows.length;
 
   for (let steps = 0; steps < limit; steps += 1) {
     const next = nextCell(row, col, direction, rows);
-    if (!isWalkable(next.row, next.col, "player", rows)) return null;
+    if (!isWalkable(next.row, next.col, "player", rows)) return { checkpoints, junction: null };
     row = next.row;
     col = next.col;
     path.push({ row, col });
+    const checkpoint = { row, col, direction, steps: steps + 1, path: [...path] };
+    checkpoints.push(checkpoint);
     const forward = availableDirections(row, col, "player", rows)
       .filter((option) => option !== OPPOSITE[direction]);
-    if (forward.length >= 2) return { row, col, direction, steps: steps + 1, path };
-    if (forward.length === 0) return null;
+    if (forward.length >= 2) return { checkpoints, junction: checkpoint };
+    if (forward.length === 0) return { checkpoints, junction: null };
     direction = forward[0];
   }
-  return null;
+  return { checkpoints, junction: null };
 }
 
 function rounded(value) {

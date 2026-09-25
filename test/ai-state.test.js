@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDecisionRequest, buildMazeFoodScan, findNextJunction, nearestDistance } from "../ai-state.js";
+import { buildDecisionRequest, buildMazeFoodScan, findCorridorThreat, findNextJunction, nearestDistance } from "../ai-state.js";
 import { cellKey, parseLevel } from "../game-core.js";
 
 test("decision state exposes every walkable choice, including a U-turn", () => {
@@ -49,4 +49,29 @@ test("nearest distance is calculated in code around maze walls", () => {
 test("Jev planning can find the next decision point before arrival", () => {
   const junction = findNextJunction({ row: 15, col: 10 }, "left");
   assert.deepEqual(junction, { row: 15, col: 9, direction: "left", steps: 1, path: [{ row: 15, col: 9 }] });
+});
+
+test("corridor threat forecasting creates an early decision checkpoint", () => {
+  const threat = findCorridorThreat(
+    { row: 21, col: 10, direction: "right" },
+    "right",
+    [{ row: 21, col: 16, speed: 5.2 }],
+  );
+
+  assert.deepEqual(
+    { row: threat.row, col: threat.col, direction: threat.direction, steps: threat.steps },
+    { row: 21, col: 11, direction: "right", steps: 1 },
+  );
+  assert.ok(threat.ghostLeadSeconds < 0.9);
+});
+
+test("corridor threat forecasting ignores edible ghosts that stay frightened through arrival", () => {
+  const threat = findCorridorThreat(
+    { row: 21, col: 10, direction: "right" },
+    "right",
+    [{ row: 21, col: 16, speed: 5.2 }],
+    6.35,
+    2,
+  );
+  assert.equal(threat, null);
 });

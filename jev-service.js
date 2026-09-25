@@ -7,6 +7,7 @@ const decisionInstructions = {
   task: "Choose Pacman's best two-junction route. Pacman will execute the first move, then replan with fresh state.",
   priorities: [
     "In normal mode, avoid predicted active-ghost collision risk before pursuing food.",
+    "When the decision trigger is corridor danger, explicitly compare continuing with reversing; survival takes priority over the previous plan.",
     "In power mode, prefer a safe edible-ghost interception that finishes before power mode expires.",
     "Use the code strategic rank as the default ordering; it already combines safety, food progress, nearby-dot cleanup, escape options, and repetition.",
     "Do not choose a HIGH LOOP RISK route unless every lower-loop alternative has materially worse ghost timing.",

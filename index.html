@@ -90,6 +90,14 @@
               <span class="panel-label">Recent turns</span>
               <ol class="decision-history" id="jevHistory"><li>No decisions yet</li></ol>
             </div>
+            <label class="policy-control" for="jevPolicy">
+              <span>Planning policy</span>
+              <select id="jevPolicy">
+                <option value="events">Event-driven</option>
+                <option value="every-tile">Every tile experiment</option>
+              </select>
+              <small id="jevPolicyHint">Jev replans at junctions, danger, power changes, or detected loops.</small>
+            </label>
             <button class="secondary-button" id="controlModeButton" type="button" disabled>Let Jev drive</button>
           </section>
 
@@ -121,7 +129,7 @@
             <p class="eyebrow">Decision trace</p>
             <h2 id="telemetryTitle">What Jev sees and returns</h2>
           </div>
-          <p id="jevActivity" class="telemetry-activity">Waiting for Jev mode and the first maze junction.</p>
+          <p id="jevActivity" class="telemetry-activity">Waiting for Jev mode and the first decision checkpoint.</p>
         </header>
 
         <div class="decision-flow" aria-label="Jev decision flow">
@@ -162,6 +170,11 @@
               <div><dt>Requests</dt><dd id="jevRequestCount">0</dd></div>
               <div><dt>Jev responses</dt><dd id="jevResponseCount">0</dd></div>
               <div><dt>Fallbacks</dt><dd id="jevFallbackCount">0</dd></div>
+              <div><dt>Event replans</dt><dd id="jevEventReplans">0</dd></div>
+              <div><dt>Dots / request</dt><dd id="jevDotsPerRequest">—</dd></div>
+              <div><dt>Score / request</dt><dd id="jevScorePerRequest">—</dd></div>
+              <div><dt>Deaths</dt><dd id="jevDeaths">0</dd></div>
+              <div><dt>Loop choices</dt><dd id="jevLoopSelections">0</dd></div>
               <div><dt>Total tokens</dt><dd id="jevTokenCount">0</dd></div>
               <div><dt>Average latency</dt><dd id="jevAverageLatency">—</dd></div>
             </dl>
@@ -176,8 +189,8 @@
           </div>
           <div class="table-scroll">
             <table>
-              <thead><tr><th>#</th><th>Cell</th><th>Candidates</th><th>Chosen route</th><th>Confidence</th><th>Latency</th><th>Model</th></tr></thead>
-              <tbody id="jevDecisionLog"><tr><td colspan="7">No junction decisions yet.</td></tr></tbody>
+              <thead><tr><th>#</th><th>Cell</th><th>Trigger</th><th>Candidates</th><th>Chosen route</th><th>Confidence</th><th>Latency</th><th>Model</th></tr></thead>
+              <tbody id="jevDecisionLog"><tr><td colspan="8">No decisions yet.</td></tr></tbody>
             </table>
           </div>
         </div>

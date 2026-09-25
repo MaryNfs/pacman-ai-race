@@ -156,6 +156,10 @@ kbd {
 .decision-history { display: flex; gap: 5px; min-height: 24px; margin: 0; padding: 0; list-style: none; }
 .decision-history li { display: grid; min-width: 25px; height: 25px; place-items: center; border-radius: 7px; color: #aeb5d0; background: #1b213e; font-size: 12px; }
 .decision-history li:first-child { color: var(--yellow); border: 1px solid rgba(255,226,52,.25); }
+.policy-control { display: grid; gap: 6px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.policy-control > span { color: var(--muted); font-family: ui-monospace, monospace; font-size: 9px; letter-spacing: .09em; text-transform: uppercase; }
+.policy-control select { width: 100%; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; color: #e5e8f8; background: #11162d; }
+.policy-control small { color: #7f87a5; font-size: 9px; line-height: 1.4; }
 
 @keyframes status-pulse { to { opacity: .38; } }
 
@@ -194,7 +198,6 @@ kbd {
 .candidate-details .empty-candidate { color: #737b99; font-size: 10px; line-height: 1.5; }
 .telemetry-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 0; }
 .telemetry-metrics div { padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: rgba(22,28,56,.45); }
-.telemetry-metrics div:last-child { grid-column: 1 / -1; }
 .telemetry-metrics dt { color: #7f87a5; font-size: 8px; letter-spacing: .07em; text-transform: uppercase; }
 .telemetry-metrics dd { margin: 4px 0 0; color: #e5e8f8; font-family: ui-monospace, monospace; font-size: 14px; }
 .telemetry-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
