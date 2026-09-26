@@ -4,10 +4,10 @@ export const JEV_MODEL = process.env.TYPESAFE_MODEL?.trim() || "jev-latest";
 export const DIRECTIONS = new Set(["up", "down", "left", "right"]);
 
 const decisionInstructions = {
-  task: "Choose Pacman's best two-junction route. Pacman will execute the first move, then replan with fresh state.",
+  task: "Choose Pacman's best two-junction route. Pacman will execute the complete route while the next route is planned ahead.",
   priorities: [
     "In normal mode, avoid predicted active-ghost collision risk before pursuing food.",
-    "Reconsider ghost timing and the complete map at every tile; survival takes priority over the previous direction.",
+    "Reconsider ghost timing and the complete map at every planned route endpoint; survival takes priority over the previous direction.",
     "In power mode, prefer a safe edible-ghost interception that finishes before power mode expires.",
     "Use the code strategic rank as the default ordering; it already combines safety, food progress, nearby-dot cleanup, escape options, and repetition.",
     "Recent foodless reversals are filtered out before this choice unless they provide a genuine ghost-safety upgrade.",

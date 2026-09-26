@@ -39,14 +39,15 @@ The API key stays on the local Node server. It is never included in frontend Jav
 
 - Before every decision, code builds a fresh whole-board snapshot containing the full maze, every remaining dot, Pacman's planned position and heading, every ghost's position and heading, lives, power timer, and recent path. The score stays in the UI and is not sent to Jev because it does not change the best route.
 - Code then ranks every legal route across the next two junctions using ghost timing, local-area cleanup, distance to future food, escape options, and recent-path overlap—the exact work Jev's documentation recommends keeping deterministic.
-- Before every tile, the local server sends compact structured route summaries and one typed `choice` question through the official `@typesafe-ai/sdk`.
+- Before each planned route begins, the local server sends compact structured route summaries and one typed `choice` question through the official `@typesafe-ai/sdk`.
 - Jev receives routes beginning with every walkable direction at that junction, including reverse/U-turn options. The state also lists blocked directions explicitly so the omission is never ambiguous.
 - U-turns remain available for genuine escapes, but a safety-aware rule removes foodless recent reversals from Jev's choices whenever another route is in the same or a safer ghost-danger band. The game never replaces Jev's returned route.
-- Jev is the only route chooser in AI mode. If a prefetched answer is late, the world briefly holds at the tile until Jev responds; no local safety route is substituted.
+- Jev is the only route chooser in AI mode. Pacman executes Jev's complete multi-tile route while the next route is prefetched, avoiding a network wait on every tile.
+- If a prefetched answer is still late at the route endpoint, the world briefly holds there until Jev responds; no local safety route is substituted.
 - Failed requests are shown and retried. They never create a `Local safety` entry in the decision log.
 - The model can return only a supplied route ID. The server validates that invariant before the browser acts.
-- Pacman executes the first move of the selected route and asks Jev again for the next tile. This receding-horizon loop lets Jev respond to newly observed ghost movement instead of blindly committing to an old plan.
-- Pacman, ghosts, timers, and collisions keep moving while Jev plans ahead whenever the prefetched answer arrives on time.
+- Pacman executes the complete selected route and asks Jev for the following route immediately. This receding-horizon loop gives Jev enough planning time while keeping control of every meaningful turn.
+- Pacman, ghosts, timers, and collisions keep moving while Jev plans the following route.
 - The telemetry view shows the live whole-maze food map, complete structured state, route criteria, route probabilities, usage, latency, and a ten-decision trace. It does not invent chain-of-thought text that Jev does not return.
 
 Reference: [TypeSafe JavaScript SDK](https://docs.typesafe.ai/sdk/javascript) and [Choice primitive](https://docs.typesafe.ai/primitives/choice).

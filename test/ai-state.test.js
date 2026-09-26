@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDecisionRequest, buildMazeSnapshot, findCorridorThreat, findNextJunction, nearestDistance } from "../ai-state.js";
+import { buildDecisionRequest, buildMazeSnapshot, findCorridorThreat, findNextJunction, nearestDistance, projectRouteState } from "../ai-state.js";
 import { cellKey, parseLevel } from "../game-core.js";
 
 test("decision state exposes every walkable choice, including a U-turn", () => {
@@ -67,6 +67,19 @@ test("whole-maze snapshot marks frightened ghosts as edible", () => {
   );
   assert.equal(scan.mapTopToBottom[15][8], "a");
   assert.equal(scan.ghosts[0].state, "edible");
+});
+
+test("route projection removes collected food and activates power mode", () => {
+  const projection = projectRouteState({
+    path: [{ row: 1, col: 1 }, { row: 1, col: 2 }, { row: 1, col: 3 }],
+    pellets: new Set(["1,1", "1,3", "2,1"]),
+    powerPellets: new Set(["1,2", "3,1"]),
+    playerSpeed: 5,
+  });
+
+  assert.deepEqual([...projection.pellets], ["2,1"]);
+  assert.deepEqual([...projection.powerPellets], ["3,1"]);
+  assert.equal(projection.frightenedFor, 7.8);
 });
 
 test("nearest distance is calculated in code around maze walls", () => {

@@ -137,6 +137,25 @@ export function buildMazeSnapshot(player, ghosts, pellets, powerPellets, frighte
   };
 }
 
+export function projectRouteState({ path, pellets, powerPellets, frightenedFor = 0, playerSpeed = 6.35 }) {
+  const projectedPellets = new Set(pellets);
+  const projectedPowerPellets = new Set(powerPellets);
+  let projectedFrightenedFor = frightenedFor;
+
+  path.forEach((cell) => {
+    projectedFrightenedFor = Math.max(0, projectedFrightenedFor - 1 / playerSpeed);
+    const key = cellKey(cell.row, cell.col);
+    projectedPellets.delete(key);
+    if (projectedPowerPellets.delete(key)) projectedFrightenedFor = 8;
+  });
+
+  return {
+    pellets: projectedPellets,
+    powerPellets: projectedPowerPellets,
+    frightenedFor: projectedFrightenedFor,
+  };
+}
+
 function ghostMarker(index, frightened) {
   const marker = String.fromCharCode(65 + Math.min(index, 25));
   return frightened ? marker.toLowerCase() : marker;
