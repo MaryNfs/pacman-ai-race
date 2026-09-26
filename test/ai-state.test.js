@@ -12,7 +12,6 @@ test("decision state exposes every walkable choice, including a U-turn", () => {
     powerPellets: level.powerPellets,
     frightenedFor: 0,
     level: 1,
-    score: 200,
     lives: 2,
   });
 
@@ -24,7 +23,8 @@ test("decision state exposes every walkable choice, including a U-turn", () => {
   assert.equal(typeof Object.values(decision.state.routeCandidates)[0].nearestGhostLeadSeconds, "number");
   assert.equal(typeof Object.values(decision.state.routeCandidates)[0].nearestRemainingDotDistance, "number");
   assert.equal(Object.values(decision.state.routeCandidates)[0].codeStrategicRank, 1);
-  assert.equal(decision.state.score, 200);
+  assert.equal("score" in decision.state, false);
+  assert.equal("scoreBand" in decision.state, false);
   assert.equal(decision.state.lives, 2);
   assert.equal(decision.state.wholeMazeSnapshot.mapTopToBottom.length, 23);
   assert.equal(decision.state.wholeMazeSnapshot.ghosts[0].name, "Blaze");

@@ -37,12 +37,12 @@ The API key stays on the local Node server. It is never included in frontend Jav
 
 ## How Jev drives
 
-- Before every decision, code builds a fresh whole-board snapshot containing the full maze, every remaining dot, Pacman's planned position and heading, every ghost's position and heading, score, lives, power timer, and recent path.
+- Before every decision, code builds a fresh whole-board snapshot containing the full maze, every remaining dot, Pacman's planned position and heading, every ghost's position and heading, lives, power timer, and recent path. The score stays in the UI and is not sent to Jev because it does not change the best route.
 - Code then ranks every legal route across the next two junctions using ghost timing, local-area cleanup, distance to future food, escape options, and recent-path overlap—the exact work Jev's documentation recommends keeping deterministic.
 - Corridors and forced turns are handled locally, so Jev is called only when there is a meaningful choice.
 - Before each upcoming junction, the local server sends compact structured route summaries and one typed `choice` question through the official `@typesafe-ai/sdk`.
 - Jev receives routes beginning with every walkable direction at that junction, including reverse/U-turn options. The state also lists blocked directions explicitly so the omission is never ambiguous.
-- U-turns remain available, but a foodless reversal through the corridor Pacman just travelled is marked as a high loop risk and ranked below similarly safe progress.
+- U-turns remain available for genuine escapes, but a safety-aware guard rejects a foodless reversal through the corridor Pacman just travelled whenever another route is in the same or a safer ghost-danger band.
 - The default event-driven policy asks Jev at junctions and also replans inside corridors when ghost timing becomes dangerous, power mode changes, or a loop is detected.
 - The optional every-tile policy asks Jev before each tile so its score, deaths, fallbacks, latency, and decision efficiency can be compared with event-driven play.
 - The model can return only a supplied route ID. The server validates that invariant before the browser acts.

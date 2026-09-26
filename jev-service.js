@@ -10,11 +10,11 @@ const decisionInstructions = {
     "When the decision trigger is corridor danger, explicitly compare continuing with reversing; survival takes priority over the previous plan.",
     "In power mode, prefer a safe edible-ghost interception that finishes before power mode expires.",
     "Use the code strategic rank as the default ordering; it already combines safety, food progress, nearby-dot cleanup, escape options, and repetition.",
-    "Do not choose a HIGH LOOP RISK route unless every lower-loop alternative has materially worse ghost timing.",
+    "Do not choose a HIGH LOOP RISK route unless it moves Pacman from a worse ghost-danger band to a safer one; the game will reject no-progress reversals otherwise.",
     "During the final dots, strongly prefer routes that reduce maze distance to the nearest remaining dot, even when the route itself collects no food yet.",
     "Choose exactly one supplied route candidate.",
   ],
-  note: "The state contains a fresh whole-board snapshot with Pacman, ghosts, walls, food, score, lives, and power timing. Route simulation and strategic ranks were calculated by the game; use them instead of redoing pathfinding from the raw map.",
+  note: "The state contains a fresh whole-board snapshot with Pacman, ghosts, walls, food, lives, and power timing. Route simulation and strategic ranks were calculated by the game; use them instead of redoing pathfinding from the raw map.",
 };
 
 export function validateDecisionPayload(payload) {

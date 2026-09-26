@@ -99,6 +99,26 @@ export function chooseRouteFallback(routes, frightened = false) {
   }, null)?.route;
 }
 
+export function guardAgainstRepeatedReversal(routes, selectedRouteId, frightened = false) {
+  const selectedRoute = routes.find((route) => route.id === selectedRouteId);
+  if (!selectedRoute || !isNoProgressReversal(selectedRoute)) {
+    return { route: selectedRoute, overridden: false, proposedRoute: selectedRoute };
+  }
+
+  const alternatives = routes.filter((route) => !isNoProgressReversal(route));
+  const alternative = chooseRouteFallback(alternatives, frightened);
+  if (!alternative || isSafetyUpgrade(selectedRoute, alternative, frightened)) {
+    return { route: selectedRoute, overridden: false, proposedRoute: selectedRoute };
+  }
+
+  return {
+    route: alternative,
+    overridden: true,
+    proposedRoute: selectedRoute,
+    reason: "blocked a no-progress U-turn because another route was at least as safe",
+  };
+}
+
 function assessRoute({ id, directions, path, endpoint, ghosts, pellets, powerPellets, frightenedFor, trail, localFood, currentHeading, playerSpeed, planningLeadTime, rows }) {
   const uniquePath = [...new Map(path.map((cell) => [cellKey(cell.row, cell.col), cell])).values()];
   const pelletCount = uniquePath.filter((cell) => pellets.has(cellKey(cell.row, cell.col))).length;
@@ -144,7 +164,7 @@ function assessRoute({ id, directions, path, endpoint, ghosts, pellets, powerPel
     powerYield,
     escapeQuality,
     repetition,
-    summary: `${label}: ${ghostRisk}; ${foodYield}; ${powerYield}; ${futureFood.globalFoodProgress}; ${localFoodCoverage}; ${loopRisk}; ends with ${escapeQuality}; ${repetition}.`,
+    summary: `${label}: ${ghostRisk}; ${loopRisk}; ${foodYield}; ${powerYield}; ${futureFood.globalFoodProgress}; ${localFoodCoverage}; ends with ${escapeQuality}; ${repetition}.`,
   };
 }
 
@@ -155,8 +175,12 @@ function rankRoutes(routes, frightened) {
     .map((route, index, ranked) => ({
       ...route,
       strategicRank: index + 1,
-      summary: `code strategic rank ${index + 1} of ${ranked.length} (score ${route.strategicScore}); ${route.summary}`,
+      summary: limitSummary(`code strategic rank ${index + 1} of ${ranked.length} (score ${route.strategicScore}); ${route.summary}`),
     }));
+}
+
+function limitSummary(summary) {
+  return summary.length <= 500 ? summary : `${summary.slice(0, 497)}...`;
 }
 
 function routeUtility(route, frightened) {
@@ -179,9 +203,26 @@ function routeUtility(route, frightened) {
   const collectionValue = (route.pelletCount || 0) * 16 + (route.powerPelletCount || 0) * 32;
   const localCompletionValue = -(route.localFoodLeftBehind || 0) * 7;
   const repetitionPenalty = (route.repeatedCells || 0) * 6;
-  const emptyReversePenalty = route.immediateReverse && collectionValue === 0 ? 28 : 0;
+  const emptyReversePenalty = route.immediateReverse && collectionValue === 0 ? 80 : 0;
   return ghostValue + collectionValue + globalFoodValue + localCompletionValue
     + (route.escapeRoutes || 0) * 2 - repetitionPenalty - emptyReversePenalty;
+}
+
+function isNoProgressReversal(route) {
+  return route.immediateReverse === true
+    && (route.pelletCount || 0) + (route.powerPelletCount || 0) === 0
+    && (route.loopRisk?.startsWith("HIGH") || (route.repeatedCells || 0) > 0);
+}
+
+function isSafetyUpgrade(reversal, alternative, frightened) {
+  if (frightened) return false;
+  return dangerBand(reversal.safetyMargin) < dangerBand(alternative.safetyMargin);
+}
+
+function dangerBand(margin) {
+  if (!Number.isFinite(margin) || margin > 1.25) return 0;
+  if (margin > 0.35) return 1;
+  return 2;
 }
 
 function assessFutureFood(endpoint, routeCells, pellets, powerPellets, rows) {

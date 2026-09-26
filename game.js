@@ -12,7 +12,7 @@ import {
   squaredDistance,
 } from "./game-core.js";
 import { buildDecisionRequest, findCorridorThreat, findNextJunction } from "./ai-state.js";
-import { chooseRouteFallback } from "./route-planner.js";
+import { chooseRouteFallback, guardAgainstRepeatedReversal } from "./route-planner.js";
 
 const canvas = document.querySelector("#gameCanvas");
 const context = canvas.getContext("2d");
@@ -55,7 +55,7 @@ const elements = {
   jevDotsPerRequest: document.querySelector("#jevDotsPerRequest"),
   jevScorePerRequest: document.querySelector("#jevScorePerRequest"),
   jevDeaths: document.querySelector("#jevDeaths"),
-  jevLoopSelections: document.querySelector("#jevLoopSelections"),
+  jevAntiLoopOverrides: document.querySelector("#jevAntiLoopOverrides"),
   jevDecisionLog: document.querySelector("#jevDecisionLog"),
   jevActivity: document.querySelector("#jevActivity"),
   announcement: document.querySelector("#announcement"),
@@ -367,7 +367,6 @@ function makeDecisionRequest(player, { ghosts = ghostSnapshot(), recentTrail = s
     powerPellets: state.powerPellets,
     frightenedFor: state.frightenedFor,
     level: state.level,
-    score: state.score,
     lives: state.lives,
     recentTrail,
     playerSpeed: state.player.speed,
@@ -416,8 +415,18 @@ async function requestJevDecision(decision, junctionKey, trigger) {
     const result = await response.json();
     if (!response.ok) throw new Error(result.message || "Jev request failed");
     if (requestId !== state.jev.requestId || state.controlMode !== "jev") return;
-    state.jev.decisionReady = { direction: result.direction, routeId: result.routeId, junctionKey, trigger };
-    showJevDecision(result, decision);
+    const guarded = guardAgainstRepeatedReversal(decision.routes, result.routeId, state.frightenedFor > 0);
+    const appliedResult = guarded.overridden
+      ? {
+          ...result,
+          jevRouteId: result.routeId,
+          routeId: guarded.route.id,
+          direction: guarded.route.direction,
+          antiLoopReason: guarded.reason,
+        }
+      : result;
+    state.jev.decisionReady = { direction: appliedResult.direction, routeId: appliedResult.routeId, junctionKey, trigger };
+    showJevDecision(appliedResult, decision);
   } catch (error) {
     if (requestId !== state.jev.requestId || state.controlMode !== "jev") return;
     const fallbackRoute = chooseRouteFallback(decision.routes, state.frightenedFor > 0);
@@ -723,13 +732,15 @@ function showJevDecision(result, decision) {
   state.jev.metrics.inputTokens += Number(result.usage?.input_tokens) || 0;
   state.jev.metrics.outputTokens += Number(result.usage?.output_tokens) || 0;
   state.jev.metrics.totalLatency += Number(result.latencyMs) || 0;
-  trackLoopSelection(decision, result.routeId);
+  if (result.antiLoopReason) state.jev.metrics.antiLoopOverrides += 1;
   elements.jevDecision.textContent = routeLabel(result.routeId);
   elements.jevConfidence.textContent = percent(result.confidence);
   elements.jevLatency.textContent = `${result.latencyMs} ms`;
   elements.jevModel.textContent = result.model || state.jev.model || "Jev";
-  elements.jevCaption.textContent = `Jev selected a route for ${decision.meta.trigger}. Pacman executes its first move, then reevaluates.`;
-  renderProbabilities(result.probabilities, result.routeId);
+  elements.jevCaption.textContent = result.antiLoopReason
+    ? `Jev proposed ${routeLabel(result.jevRouteId)}. The anti-loop guard chose ${routeLabel(result.routeId)} instead.`
+    : `Jev selected a route for ${decision.meta.trigger}. Pacman executes its first move, then reevaluates.`;
+  renderProbabilities(result.probabilities, result.jevRouteId || result.routeId);
   renderCandidateTelemetry(decision.routeChoices, result.probabilities, result.routeId);
   addDecisionHistory(result.direction);
   addTelemetryLog({
@@ -739,17 +750,20 @@ function showJevDecision(result, decision) {
     confidence: result.confidence,
     latencyMs: result.latencyMs,
     model: result.model || state.jev.model || "Jev",
-    source: "Jev",
+    source: result.antiLoopReason ? "Jev + guard" : "Jev",
   });
-  elements.jevActivity.textContent = `Route selected for ${decision.meta.trigger}: ${routeLabel(result.routeId)}. First move queued for cell ${decision.meta.row},${decision.meta.col}.`;
+  elements.jevActivity.textContent = result.antiLoopReason
+    ? `${result.antiLoopReason}. Executing ${routeLabel(result.routeId)} instead of ${routeLabel(result.jevRouteId)}.`
+    : `Route selected for ${decision.meta.trigger}: ${routeLabel(result.routeId)}. First move queued for cell ${decision.meta.row},${decision.meta.col}.`;
   updateTelemetryMetrics();
   setJevStatus("ready", "Driving");
-  announce(`Jev chose ${routeLabel(result.routeId)} with ${percent(result.confidence)} confidence.`);
+  announce(result.antiLoopReason
+    ? `The anti-loop guard replaced Jev's ${routeLabel(result.jevRouteId)} route with ${routeLabel(result.routeId)}.`
+    : `Jev chose ${routeLabel(result.routeId)} with ${percent(result.confidence)} confidence.`);
 }
 
 function showFallbackDecision(route, message, decision) {
   state.jev.metrics.fallbacks += 1;
-  trackLoopSelection(decision, route.id);
   elements.jevDecision.textContent = routeLabel(route.id);
   elements.jevConfidence.textContent = "Fallback";
   elements.jevLatency.textContent = "—";
@@ -868,7 +882,7 @@ function updateTelemetryMetrics() {
     ? Math.round(state.score / metrics.requests).toString()
     : "—";
   elements.jevDeaths.textContent = String(metrics.deaths);
-  elements.jevLoopSelections.textContent = String(metrics.loopSelections);
+  elements.jevAntiLoopOverrides.textContent = String(metrics.antiLoopOverrides);
 }
 
 function resetTelemetryDisplay() {
@@ -897,16 +911,11 @@ function freshJevMetrics() {
     everyTileRequests: 0,
     dotsCollected: 0,
     deaths: 0,
-    loopSelections: 0,
+    antiLoopOverrides: 0,
     inputTokens: 0,
     outputTokens: 0,
     totalLatency: 0,
   };
-}
-
-function trackLoopSelection(decision, routeId) {
-  const route = decision.routes.find((candidate) => candidate.id === routeId);
-  if (route?.loopRisk.startsWith("HIGH")) state.jev.metrics.loopSelections += 1;
 }
 
 function policyLabel() {

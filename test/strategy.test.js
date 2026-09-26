@@ -28,7 +28,6 @@ test("rank-one food strategy clears the maze without cycling", () => {
         powerPellets: level.powerPellets,
         frightenedFor: 0,
         level: 1,
-        score: 0,
         recentTrail: trail.slice(-16),
       });
       direction = decision.routes[0].direction;

@@ -146,7 +146,7 @@
               <h3>Whole-board state sent</h3>
               <span>JSON</span>
             </div>
-            <p class="telemetry-help">Every decision includes the full maze, remaining food, Pacman, every ghost's position and heading, score, lives, power timer, and computed route metrics.</p>
+            <p class="telemetry-help">Every decision includes the full maze, remaining food, Pacman, every ghost's position and heading, lives, power timer, and computed route metrics. Score is intentionally excluded.</p>
             <pre id="jevStatePayload">Jev has not received a junction state yet.</pre>
           </article>
 
@@ -174,7 +174,7 @@
               <div><dt>Dots / request</dt><dd id="jevDotsPerRequest">—</dd></div>
               <div><dt>Score / request</dt><dd id="jevScorePerRequest">—</dd></div>
               <div><dt>Deaths</dt><dd id="jevDeaths">0</dd></div>
-              <div><dt>Loop choices</dt><dd id="jevLoopSelections">0</dd></div>
+              <div><dt>Loop reversals blocked</dt><dd id="jevAntiLoopOverrides">0</dd></div>
               <div><dt>Total tokens</dt><dd id="jevTokenCount">0</dd></div>
               <div><dt>Average latency</dt><dd id="jevAverageLatency">—</dd></div>
             </dl>

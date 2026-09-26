@@ -1,7 +1,7 @@
 import { DIRECTIONS, LEVEL_MAP, OPPOSITE, availableDirections, cellKey, isWalkable, mazeRegion, nextCell } from "./game-core.js";
 import { enumerateRouteCandidates } from "./route-planner.js";
 
-export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, score, lives = 3, recentTrail = [], playerSpeed = 6.35, planningLeadTime = 0 }) {
+export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, lives = 3, recentTrail = [], playerSpeed = 6.35, planningLeadTime = 0 }) {
   const options = availableDirections(player.row, player.col);
   const frightened = frightenedFor > 0;
 
@@ -36,7 +36,6 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
       objective: "Survive and clear every food dot.",
       mode: frightened ? "power mode: ghosts are edible" : "normal mode: ghosts are dangerous",
       progress: progressLabel(pellets.size + powerPellets.size),
-      score,
       lives,
       currentHeading: player.direction,
       plannedDecisionPosition: { row: player.row, col: player.col },
@@ -48,7 +47,6 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
       },
       levelNumber: level,
       level: level > 3 ? "advanced speed" : level > 1 ? "increased speed" : "base speed",
-      scoreBand: score >= 5_000 ? "high score run" : score >= 1_000 ? "established run" : "early run",
       wholeMazeSnapshot: buildMazeSnapshot(player, ghosts, pellets, powerPellets, frightenedFor),
       directionAssessments: Object.fromEntries(Object.keys(DIRECTIONS).map((direction) => {
         const assessment = assessmentByDirection.get(direction);
