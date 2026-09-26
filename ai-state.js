@@ -1,5 +1,5 @@
 import { DIRECTIONS, LEVEL_MAP, OPPOSITE, availableDirections, cellKey, isWalkable, mazeRegion, nextCell } from "./game-core.js";
-import { enumerateRouteCandidates } from "./route-planner.js";
+import { enumerateRouteCandidates, filterSelectableRoutes } from "./route-planner.js";
 
 export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, lives = 3, recentTrail = [], playerSpeed = 6.35, planningLeadTime = 0 }) {
   const options = availableDirections(player.row, player.col);
@@ -27,7 +27,9 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
     };
   });
   const assessmentByDirection = new Map(assessments.map((assessment) => [assessment.direction, assessment]));
-  const routes = enumerateRouteCandidates({ player, ghosts, pellets, powerPellets, frightenedFor, recentTrail, playerSpeed, planningLeadTime });
+  const allRoutes = enumerateRouteCandidates({ player, ghosts, pellets, powerPellets, frightenedFor, recentTrail, playerSpeed, planningLeadTime });
+  const routes = filterSelectableRoutes(allRoutes, frightened);
+  const blockedRouteIds = allRoutes.filter((route) => !routes.includes(route)).map((route) => route.id);
 
   return {
     meta: { row: player.row, col: player.col },
@@ -47,6 +49,10 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
       },
       levelNumber: level,
       level: level > 3 ? "advanced speed" : level > 1 ? "increased speed" : "base speed",
+      antiLoopRule: {
+        blockedRouteIds,
+        explanation: "Recent foodless U-turns are excluded unless they improve Pacman's ghost-danger band.",
+      },
       wholeMazeSnapshot: buildMazeSnapshot(player, ghosts, pellets, powerPellets, frightenedFor),
       directionAssessments: Object.fromEntries(Object.keys(DIRECTIONS).map((direction) => {
         const assessment = assessmentByDirection.get(direction);

@@ -11,8 +11,7 @@ import {
   availableDirections,
   squaredDistance,
 } from "./game-core.js";
-import { buildDecisionRequest, findCorridorThreat, findNextJunction } from "./ai-state.js";
-import { chooseRouteFallback, guardAgainstRepeatedReversal } from "./route-planner.js";
+import { buildDecisionRequest } from "./ai-state.js";
 
 const canvas = document.querySelector("#gameCanvas");
 const context = canvas.getContext("2d");
@@ -42,20 +41,18 @@ const elements = {
   jevProbabilities: document.querySelector("#jevProbabilities"),
   jevHistory: document.querySelector("#jevHistory"),
   controlModeButton: document.querySelector("#controlModeButton"),
-  jevPolicy: document.querySelector("#jevPolicy"),
-  jevPolicyHint: document.querySelector("#jevPolicyHint"),
   jevStatePayload: document.querySelector("#jevStatePayload"),
   jevCandidateDetails: document.querySelector("#jevCandidateDetails"),
   jevRequestCount: document.querySelector("#jevRequestCount"),
   jevResponseCount: document.querySelector("#jevResponseCount"),
-  jevFallbackCount: document.querySelector("#jevFallbackCount"),
+  jevErrorCount: document.querySelector("#jevErrorCount"),
   jevTokenCount: document.querySelector("#jevTokenCount"),
   jevAverageLatency: document.querySelector("#jevAverageLatency"),
-  jevEventReplans: document.querySelector("#jevEventReplans"),
+  jevDecisionWaits: document.querySelector("#jevDecisionWaits"),
   jevDotsPerRequest: document.querySelector("#jevDotsPerRequest"),
   jevScorePerRequest: document.querySelector("#jevScorePerRequest"),
   jevDeaths: document.querySelector("#jevDeaths"),
-  jevAntiLoopOverrides: document.querySelector("#jevAntiLoopOverrides"),
+  jevLoopRoutesExcluded: document.querySelector("#jevLoopRoutesExcluded"),
   jevDecisionLog: document.querySelector("#jevDecisionLog"),
   jevActivity: document.querySelector("#jevActivity"),
   announcement: document.querySelector("#announcement"),
@@ -91,13 +88,11 @@ const state = {
     model: null,
     pending: false,
     pendingFor: null,
-    pendingTrigger: null,
     decisionReady: null,
-    planningPolicy: "events",
-    lastPlannedMode: "normal",
+    waitingForKey: null,
+    retryAt: 0,
     requestId: 0,
     history: [],
-    currentDecision: null,
     metrics: freshJevMetrics(),
     log: [],
   },
@@ -122,9 +117,9 @@ function resetActors() {
   state.jev.requestId += 1;
   state.jev.pending = false;
   state.jev.pendingFor = null;
-  state.jev.pendingTrigger = null;
   state.jev.decisionReady = null;
-  state.jev.lastPlannedMode = "normal";
+  state.jev.waitingForKey = null;
+  state.jev.retryAt = 0;
   state.manualQueue = [];
   state.player = makeEntity(parsed.player, "left", 6.35);
   state.trail = [cellKey(parsed.player.row, parsed.player.col)];
@@ -143,7 +138,6 @@ function resetGame() {
   state.jev.history = [];
   state.jev.metrics = freshJevMetrics();
   state.jev.log = [];
-  state.jev.currentDecision = null;
   resetDecisionDisplay();
   resetTelemetryDisplay();
   loadLevel();
@@ -165,7 +159,7 @@ function beginGame(controlMode = state.controlMode) {
   elements.startOverlay.classList.add("hidden");
   elements.messageOverlay.classList.add("hidden");
   elements.pauseButton.firstChild.textContent = "Pause ";
-  announce(`${state.controlMode === "jev" ? policyLabel() : "Manual game"} started. Level 1.`);
+  announce(`${state.controlMode === "jev" ? "Jev control" : "Manual game"} started. Level 1.`);
   playTone(330, 0.08, "square", 0.035);
   requestAnimationFrame(gameLoop);
 }
@@ -246,39 +240,38 @@ function updatePlayer(delta) {
 }
 
 function chooseJevStep(player) {
-  const forwardOptions = availableDirections(player.row, player.col)
-    .filter((direction) => direction !== OPPOSITE[player.direction]);
-  const options = forwardOptions.length > 0
-    ? forwardOptions
-    : availableDirections(player.row, player.col);
   const checkpointKey = cellKey(player.row, player.col);
 
   if (state.jev.decisionReady?.junctionKey === checkpointKey) {
     const direction = state.jev.decisionReady.direction;
     state.jev.decisionReady = null;
+    state.jev.waitingForKey = null;
     return startJevStep(player, direction);
   }
 
   if (state.jev.pendingFor === checkpointKey) {
-    state.jev.requestId += 1;
-    state.jev.pending = false;
-    state.jev.pendingFor = null;
-    const trigger = state.jev.pendingTrigger || "decision checkpoint";
-    state.jev.pendingTrigger = null;
-    const decision = makeDecisionRequest(player, { trigger });
-    const fallbackRoute = chooseRouteFallback(decision.routes, state.frightenedFor > 0);
-    showFallbackDecision(fallbackRoute, `Jev did not answer before the ${trigger} checkpoint`, decision);
-    return startJevStep(player, fallbackRoute.direction);
+    markJevWait(checkpointKey);
+    return false;
   }
 
-  if (options.length === 1) {
-    return startJevStep(player, options[0]);
+  if (state.jev.pending) {
+    markJevWait(checkpointKey);
+    return false;
   }
 
-  const decision = makeDecisionRequest(player, { trigger: "junction" });
-  const fallbackRoute = chooseRouteFallback(decision.routes, state.frightenedFor > 0);
-  showFallbackDecision(fallbackRoute, "Jev did not answer before Pacman reached the junction", decision);
-  return startJevStep(player, fallbackRoute.direction);
+  markJevWait(checkpointKey);
+  if (performance.now() < state.jev.retryAt) return false;
+
+  const decision = makeDecisionRequest(player);
+  requestJevDecision(decision, checkpointKey, "every tile");
+  return false;
+}
+
+function markJevWait(checkpointKey) {
+  if (state.jev.waitingForKey === checkpointKey) return;
+  state.jev.waitingForKey = checkpointKey;
+  state.jev.metrics.decisionWaits += 1;
+  updateTelemetryMetrics();
 }
 
 function startJevStep(player, direction) {
@@ -291,7 +284,7 @@ function startJevStep(player, direction) {
 
 function ensureJevPrefetch(player, direction) {
   const ghosts = ghostSnapshot();
-  const plan = findPlanningTarget(player, direction, ghosts);
+  const plan = findPlanningTarget(player, direction);
   if (!plan) return;
   const { target, trigger } = plan;
   if (!target) return;
@@ -307,59 +300,14 @@ function ensureJevPrefetch(player, direction) {
   requestJevDecision(decision, junctionKey, trigger);
 }
 
-function findPlanningTarget(player, direction, ghosts) {
+function findPlanningTarget(player, direction) {
   const next = nextCell(player.row, player.col, direction);
   if (!isWalkable(next.row, next.col)) return null;
   const nextTile = { row: next.row, col: next.col, direction, steps: 1, path: [{ row: next.row, col: next.col }] };
-
-  if (state.jev.planningPolicy === "every-tile") {
-    return { target: nextTile, trigger: "every tile" };
-  }
-
-  const mode = state.frightenedFor > 0 ? "power" : "normal";
-  if (mode !== state.jev.lastPlannedMode) {
-    return { target: nextTile, trigger: "power mode changed" };
-  }
-
-  const threat = findCorridorThreat(player, direction, ghosts, player.speed, state.frightenedFor);
-  const junction = findNextJunction(player, direction);
-  if (threat && (!junction || threat.steps < junction.steps)) {
-    return { target: threat, trigger: "corridor danger" };
-  }
-
-  const path = junction?.path || [];
-  const loopCheckpoint = path.find((cell) => state.trail.filter((key) => key === cellKey(cell.row, cell.col)).length >= 2);
-  if (loopCheckpoint) {
-    const index = path.indexOf(loopCheckpoint);
-    return {
-      target: {
-        ...loopCheckpoint,
-        direction: headingAtPathIndex(player, direction, path, index),
-        steps: index + 1,
-        path: path.slice(0, index + 1),
-      },
-      trigger: "loop detected",
-    };
-  }
-
-  return junction ? { target: junction, trigger: "junction" } : null;
+  return { target: nextTile, trigger: "every tile" };
 }
 
-function headingAtPathIndex(player, initialDirection, path, targetIndex) {
-  let previous = { row: player.row, col: player.col };
-  let heading = initialDirection;
-  for (let index = 0; index <= targetIndex; index += 1) {
-    const cell = path[index];
-    heading = Object.keys(DIRECTIONS).find((candidate) => {
-      const next = nextCell(previous.row, previous.col, candidate);
-      return next.row === cell.row && next.col === cell.col;
-    }) || heading;
-    previous = cell;
-  }
-  return heading;
-}
-
-function makeDecisionRequest(player, { ghosts = ghostSnapshot(), recentTrail = state.trail, planningLeadTime = 0, trigger = "junction" } = {}) {
+function makeDecisionRequest(player, { ghosts = ghostSnapshot(), recentTrail = state.trail, planningLeadTime = 0, trigger = "every tile" } = {}) {
   const decision = buildDecisionRequest({
     player,
     ghosts,
@@ -373,7 +321,7 @@ function makeDecisionRequest(player, { ghosts = ghostSnapshot(), recentTrail = s
     planningLeadTime,
   });
   decision.meta.trigger = trigger;
-  decision.state.planningPolicy = state.jev.planningPolicy === "every-tile" ? "Jev decides at every tile" : "event-driven replanning";
+  decision.state.planningPolicy = "Jev decides at every tile; no local route fallback";
   decision.state.decisionTrigger = trigger;
   return decision;
 }
@@ -391,18 +339,15 @@ async function requestJevDecision(decision, junctionKey, trigger) {
   const requestId = ++state.jev.requestId;
   state.jev.pending = true;
   state.jev.pendingFor = junctionKey;
-  state.jev.pendingTrigger = trigger;
   state.jev.decisionReady = null;
-  state.jev.currentDecision = decision;
-  state.jev.lastPlannedMode = state.frightenedFor > 0 ? "power" : "normal";
   state.jev.metrics.requests += 1;
-  if (trigger === "every tile") state.jev.metrics.everyTileRequests += 1;
-  else if (trigger === "junction") state.jev.metrics.junctionRequests += 1;
-  else state.jev.metrics.eventReplans += 1;
+  state.jev.metrics.loopRoutesExcluded += decision.state.antiLoopRule.blockedRouteIds.length;
   setJevStatus("thinking", "Thinking");
   elements.jevDecision.textContent = "EVALUATING";
   elements.jevCaption.textContent = `Comparing ${decision.routeChoices.length} routes because of ${trigger}.`;
-  elements.jevActivity.textContent = `Planning for ${trigger} at cell ${decision.meta.row},${decision.meta.col} · Pacman and ghosts keep moving.`;
+  elements.jevActivity.textContent = isWaitingForJev()
+    ? `Planning for ${trigger} at cell ${decision.meta.row},${decision.meta.col} · Holding this tile so only Jev chooses the route.`
+    : `Planning for ${trigger} at cell ${decision.meta.row},${decision.meta.col} · Pacman and ghosts keep moving.`;
   renderJevInput(decision);
   updateTelemetryMetrics();
 
@@ -415,28 +360,17 @@ async function requestJevDecision(decision, junctionKey, trigger) {
     const result = await response.json();
     if (!response.ok) throw new Error(result.message || "Jev request failed");
     if (requestId !== state.jev.requestId || state.controlMode !== "jev") return;
-    const guarded = guardAgainstRepeatedReversal(decision.routes, result.routeId, state.frightenedFor > 0);
-    const appliedResult = guarded.overridden
-      ? {
-          ...result,
-          jevRouteId: result.routeId,
-          routeId: guarded.route.id,
-          direction: guarded.route.direction,
-          antiLoopReason: guarded.reason,
-        }
-      : result;
-    state.jev.decisionReady = { direction: appliedResult.direction, routeId: appliedResult.routeId, junctionKey, trigger };
-    showJevDecision(appliedResult, decision);
+    state.jev.decisionReady = { direction: result.direction, routeId: result.routeId, junctionKey, trigger };
+    showJevDecision(result, decision);
   } catch (error) {
     if (requestId !== state.jev.requestId || state.controlMode !== "jev") return;
-    const fallbackRoute = chooseRouteFallback(decision.routes, state.frightenedFor > 0);
-    state.jev.decisionReady = { direction: fallbackRoute.direction, routeId: fallbackRoute.id, junctionKey, trigger };
-    showFallbackDecision(fallbackRoute, error.message, decision);
+    state.jev.metrics.requestErrors += 1;
+    state.jev.retryAt = performance.now() + 800;
+    showJevRequestError(error.message, decision);
   } finally {
     if (requestId === state.jev.requestId) {
       state.jev.pending = false;
       state.jev.pendingFor = null;
-      state.jev.pendingTrigger = null;
     }
   }
 }
@@ -567,9 +501,11 @@ function gameLoop(now) {
 
   if (state.status === "playing") {
     updatePlayer(delta);
-    state.frightenedFor = Math.max(0, state.frightenedFor - delta);
-    updateGhosts(delta);
-    checkCollisions();
+    if (!isWaitingForJev()) {
+      state.frightenedFor = Math.max(0, state.frightenedFor - delta);
+      updateGhosts(delta);
+      checkCollisions();
+    }
   }
   draw(now);
   if (["playing", "paused", "countdown"].includes(state.status)) requestAnimationFrame(gameLoop);
@@ -594,14 +530,19 @@ function draw(now = 0) {
     context.font = "700 28px 'Avenir Next', 'Segoe UI', sans-serif";
     context.textAlign = "center";
     context.fillText(state.status === "paused" ? "PAUSED" : "READY!", canvas.width / 2, canvas.height / 2);
-  } else if (state.jev.pending) {
+  } else if (state.jev.pending || isWaitingForJev()) {
     context.fillStyle = "rgba(3, 5, 13, .82)";
     context.fillRect(canvas.width / 2 - 86, 8, 172, 24);
     context.fillStyle = "#24e0ff";
     context.font = "700 10px 'Avenir Next', 'Segoe UI', sans-serif";
     context.textAlign = "center";
-    context.fillText("JEV PLANNING AHEAD · GAME LIVE", canvas.width / 2, 24);
+    context.fillText(isWaitingForJev() ? "WAITING FOR JEV · NO LOCAL MOVE" : "JEV PLANNING AHEAD · GAME LIVE", canvas.width / 2, 24);
   }
+}
+
+function isWaitingForJev() {
+  if (state.controlMode !== "jev" || !state.player || state.player.progress !== 0) return false;
+  return state.jev.waitingForKey === cellKey(state.player.row, state.player.col);
 }
 
 function drawMaze(now) {
@@ -716,12 +657,13 @@ function setControlMode(mode) {
   state.jev.requestId += 1;
   state.jev.pending = false;
   state.jev.pendingFor = null;
-  state.jev.pendingTrigger = null;
   state.jev.decisionReady = null;
+  state.jev.waitingForKey = null;
+  state.jev.retryAt = 0;
   state.manualQueue = [];
   elements.controlModeButton.textContent = state.controlMode === "jev" ? "Take manual control" : "Let Jev drive";
   elements.jevCaption.textContent = state.controlMode === "jev"
-    ? `${policyLabel()} is active. Jev receives fresh state at every decision checkpoint.`
+    ? "Jev decides every tile from fresh whole-board state. No local route fallback is used."
     : "Manual pilot. Switch to Jev at any time.";
   if (state.jev.configured) setJevStatus("ready", state.controlMode === "jev" ? "Driving" : "Ready");
   return true;
@@ -732,15 +674,12 @@ function showJevDecision(result, decision) {
   state.jev.metrics.inputTokens += Number(result.usage?.input_tokens) || 0;
   state.jev.metrics.outputTokens += Number(result.usage?.output_tokens) || 0;
   state.jev.metrics.totalLatency += Number(result.latencyMs) || 0;
-  if (result.antiLoopReason) state.jev.metrics.antiLoopOverrides += 1;
   elements.jevDecision.textContent = routeLabel(result.routeId);
   elements.jevConfidence.textContent = percent(result.confidence);
   elements.jevLatency.textContent = `${result.latencyMs} ms`;
   elements.jevModel.textContent = result.model || state.jev.model || "Jev";
-  elements.jevCaption.textContent = result.antiLoopReason
-    ? `Jev proposed ${routeLabel(result.jevRouteId)}. The anti-loop guard chose ${routeLabel(result.routeId)} instead.`
-    : `Jev selected a route for ${decision.meta.trigger}. Pacman executes its first move, then reevaluates.`;
-  renderProbabilities(result.probabilities, result.jevRouteId || result.routeId);
+  elements.jevCaption.textContent = `Jev selected a route for ${decision.meta.trigger}. Pacman executes its first move, then reevaluates.`;
+  renderProbabilities(result.probabilities, result.routeId);
   renderCandidateTelemetry(decision.routeChoices, result.probabilities, result.routeId);
   addDecisionHistory(result.direction);
   addTelemetryLog({
@@ -750,32 +689,25 @@ function showJevDecision(result, decision) {
     confidence: result.confidence,
     latencyMs: result.latencyMs,
     model: result.model || state.jev.model || "Jev",
-    source: result.antiLoopReason ? "Jev + guard" : "Jev",
+    source: "Jev",
   });
-  elements.jevActivity.textContent = result.antiLoopReason
-    ? `${result.antiLoopReason}. Executing ${routeLabel(result.routeId)} instead of ${routeLabel(result.jevRouteId)}.`
-    : `Route selected for ${decision.meta.trigger}: ${routeLabel(result.routeId)}. First move queued for cell ${decision.meta.row},${decision.meta.col}.`;
+  elements.jevActivity.textContent = `Route selected for ${decision.meta.trigger}: ${routeLabel(result.routeId)}. First move queued for cell ${decision.meta.row},${decision.meta.col}.`;
   updateTelemetryMetrics();
   setJevStatus("ready", "Driving");
-  announce(result.antiLoopReason
-    ? `The anti-loop guard replaced Jev's ${routeLabel(result.jevRouteId)} route with ${routeLabel(result.routeId)}.`
-    : `Jev chose ${routeLabel(result.routeId)} with ${percent(result.confidence)} confidence.`);
+  announce(`Jev chose ${routeLabel(result.routeId)} with ${percent(result.confidence)} confidence.`);
 }
 
-function showFallbackDecision(route, message, decision) {
-  state.jev.metrics.fallbacks += 1;
-  elements.jevDecision.textContent = routeLabel(route.id);
-  elements.jevConfidence.textContent = "Fallback";
+function showJevRequestError(message, decision) {
+  elements.jevDecision.textContent = "RETRYING";
+  elements.jevConfidence.textContent = "—";
   elements.jevLatency.textContent = "—";
-  elements.jevModel.textContent = "Local";
-  elements.jevCaption.textContent = `${message}. Using the safest locally simulated route.`;
-  renderProbabilities({ [route.id]: 1 }, route.id);
-  renderCandidateTelemetry(decision.routeChoices, { [route.id]: 1 }, route.id);
-  addDecisionHistory(route.direction);
-  addTelemetryLog({ decision, direction: route.direction, routeId: route.id, confidence: null, latencyMs: null, model: "Local safety", source: "Fallback" });
-  elements.jevActivity.textContent = `Jev request failed: ${message}. The local safety policy selected ${routeLabel(route.id)}.`;
+  elements.jevModel.textContent = state.jev.model || "Jev";
+  elements.jevCaption.textContent = `${message}. No local route was chosen; Jev will be asked again.`;
+  renderProbabilities();
+  renderCandidateTelemetry(decision.routeChoices);
+  elements.jevActivity.textContent = `Jev request failed at cell ${decision.meta.row},${decision.meta.col}. Holding the decision tile and retrying without a local fallback.`;
   updateTelemetryMetrics();
-  setJevStatus("error", "Fallback");
+  setJevStatus("error", "Retrying");
 }
 
 function renderProbabilities(probabilities = {}, selected) {
@@ -828,7 +760,7 @@ function renderCandidateTelemetry(routeChoices, probabilities = {}, selected = n
 
 function addTelemetryLog({ decision, direction, routeId, confidence, latencyMs, model, source }) {
   state.jev.log.unshift({
-    number: state.jev.metrics.responses + state.jev.metrics.fallbacks,
+    number: state.jev.metrics.responses,
     cell: `${decision.meta.row},${decision.meta.col}`,
     trigger: decision.meta.trigger,
     candidates: `${decision.routeChoices.length} routes`,
@@ -849,7 +781,7 @@ function addTelemetryLog({ decision, direction, routeId, confidence, latencyMs, 
       entry.trigger,
       entry.candidates,
       routeLabel(entry.routeId),
-      entry.confidence === null ? "fallback" : percent(entry.confidence),
+      percent(entry.confidence),
       entry.latencyMs === null ? "—" : `${entry.latencyMs} ms`,
       entry.model,
     ];
@@ -869,12 +801,12 @@ function updateTelemetryMetrics() {
   const metrics = state.jev.metrics;
   elements.jevRequestCount.textContent = String(metrics.requests);
   elements.jevResponseCount.textContent = String(metrics.responses);
-  elements.jevFallbackCount.textContent = String(metrics.fallbacks);
+  elements.jevErrorCount.textContent = String(metrics.requestErrors);
   elements.jevTokenCount.textContent = String(metrics.inputTokens + metrics.outputTokens);
   elements.jevAverageLatency.textContent = metrics.responses > 0
     ? `${Math.round(metrics.totalLatency / metrics.responses)} ms`
     : "—";
-  elements.jevEventReplans.textContent = String(metrics.eventReplans);
+  elements.jevDecisionWaits.textContent = String(metrics.decisionWaits);
   elements.jevDotsPerRequest.textContent = metrics.requests > 0
     ? (metrics.dotsCollected / metrics.requests).toFixed(2)
     : "—";
@@ -882,11 +814,11 @@ function updateTelemetryMetrics() {
     ? Math.round(state.score / metrics.requests).toString()
     : "—";
   elements.jevDeaths.textContent = String(metrics.deaths);
-  elements.jevAntiLoopOverrides.textContent = String(metrics.antiLoopOverrides);
+  elements.jevLoopRoutesExcluded.textContent = String(metrics.loopRoutesExcluded);
 }
 
 function resetTelemetryDisplay() {
-  elements.jevStatePayload.textContent = "Jev has not received a junction state yet.";
+  elements.jevStatePayload.textContent = "Jev has not received a tile state yet.";
   const candidate = document.createElement("li");
   candidate.className = "empty-candidate";
   candidate.textContent = "Simulated routes and their computed risk summaries will appear here.";
@@ -897,7 +829,7 @@ function resetTelemetryDisplay() {
   cell.textContent = "No decisions yet.";
   row.append(cell);
   elements.jevDecisionLog.replaceChildren(row);
-  elements.jevActivity.textContent = "Waiting for Jev mode and the first decision checkpoint.";
+  elements.jevActivity.textContent = "Waiting for Jev mode and the first tile decision.";
   updateTelemetryMetrics();
 }
 
@@ -905,32 +837,15 @@ function freshJevMetrics() {
   return {
     requests: 0,
     responses: 0,
-    fallbacks: 0,
-    junctionRequests: 0,
-    eventReplans: 0,
-    everyTileRequests: 0,
+    requestErrors: 0,
+    decisionWaits: 0,
     dotsCollected: 0,
     deaths: 0,
-    antiLoopOverrides: 0,
+    loopRoutesExcluded: 0,
     inputTokens: 0,
     outputTokens: 0,
     totalLatency: 0,
   };
-}
-
-function policyLabel() {
-  return state.jev.planningPolicy === "every-tile" ? "Every-tile experiment" : "Event-driven planning";
-}
-
-function updatePolicyDisplay() {
-  const everyTile = state.jev.planningPolicy === "every-tile";
-  elements.jevPolicy.value = state.jev.planningPolicy;
-  elements.jevPolicyHint.textContent = everyTile
-    ? "Jev is asked before every tile. Expect more calls and deadline fallbacks."
-    : "Jev replans at junctions, danger, power changes, or detected loops.";
-  if (state.controlMode === "jev") {
-    elements.jevCaption.textContent = `${policyLabel()} is active. Jev receives fresh state at every decision checkpoint.`;
-  }
 }
 
 function addDecisionHistory(direction) {
@@ -1076,14 +991,6 @@ elements.controlModeButton.addEventListener("click", () => {
   const nextMode = state.controlMode === "jev" ? "manual" : "jev";
   if (setControlMode(nextMode)) announce(nextMode === "jev" ? "Jev has control." : "Manual control restored.");
 });
-elements.jevPolicy.addEventListener("change", () => {
-  state.jev.planningPolicy = elements.jevPolicy.value === "every-tile" ? "every-tile" : "events";
-  updatePolicyDisplay();
-  if (state.status === "playing" && state.controlMode === "jev") {
-    beginGame("jev");
-    announce(`${policyLabel()} started with a fresh run for a fair comparison.`);
-  }
-});
 document.querySelectorAll("[data-direction]").forEach((button) => {
   button.addEventListener("pointerdown", (event) => {
     event.preventDefault();
@@ -1096,6 +1003,5 @@ document.addEventListener("visibilitychange", () => {
 
 loadLevel();
 updateHud();
-updatePolicyDisplay();
 draw();
 checkJevStatus();

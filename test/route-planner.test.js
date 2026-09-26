@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chooseRouteFallback, enumerateRouteCandidates, guardAgainstRepeatedReversal, traceCorridor } from "../route-planner.js";
+import { chooseRouteFallback, enumerateRouteCandidates, filterSelectableRoutes, traceCorridor } from "../route-planner.js";
 import { parseLevel } from "../game-core.js";
 
 test("route planner enumerates two-junction plans for every first move", () => {
@@ -93,27 +93,24 @@ test("projected recent corridors expose and demote no-progress reversals", () =>
   assert.match(routes[0].summary, /code strategic rank 1/);
 });
 
-test("anti-loop guard replaces a no-progress reversal when another route is equally safe", () => {
+test("route filter excludes a no-progress reversal when another route is equally safe", () => {
   const routes = [
     { id: "right_then_left", immediateReverse: true, loopRisk: "HIGH LOOP RISK", pelletCount: 0, powerPelletCount: 0, repeatedCells: 3, safetyMargin: 2, escapeRoutes: 2 },
     { id: "left_then_down", immediateReverse: false, loopRisk: "low loop risk", pelletCount: 1, powerPelletCount: 0, repeatedCells: 0, safetyMargin: 2, escapeRoutes: 2 },
   ];
 
-  const guarded = guardAgainstRepeatedReversal(routes, "right_then_left");
+  const selectable = filterSelectableRoutes(routes);
 
-  assert.equal(guarded.overridden, true);
-  assert.equal(guarded.proposedRoute.id, "right_then_left");
-  assert.equal(guarded.route.id, "left_then_down");
+  assert.deepEqual(selectable.map((route) => route.id), ["left_then_down"]);
 });
 
-test("anti-loop guard preserves a U-turn that escapes a worse danger band", () => {
+test("route filter preserves a U-turn that escapes a worse danger band", () => {
   const routes = [
     { id: "right_then_left", immediateReverse: true, loopRisk: "HIGH LOOP RISK", pelletCount: 0, powerPelletCount: 0, repeatedCells: 3, safetyMargin: 2, escapeRoutes: 2 },
     { id: "left_then_down", immediateReverse: false, loopRisk: "low loop risk", pelletCount: 1, powerPelletCount: 0, repeatedCells: 0, safetyMargin: 0.2, escapeRoutes: 2 },
   ];
 
-  const guarded = guardAgainstRepeatedReversal(routes, "right_then_left");
+  const selectable = filterSelectableRoutes(routes);
 
-  assert.equal(guarded.overridden, false);
-  assert.equal(guarded.route.id, "right_then_left");
+  assert.deepEqual(selectable.map((route) => route.id), ["right_then_left", "left_then_down"]);
 });

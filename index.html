@@ -77,7 +77,7 @@
               </div>
               <span class="status-pill checking" id="jevStatus"><span></span>Checking</span>
             </div>
-            <p class="decision-caption" id="jevCaption">Typed decisions will appear here at each junction.</p>
+            <p class="decision-caption" id="jevCaption">Jev chooses every tile from fresh whole-board state.</p>
             <div class="decision-meta">
               <span><small>Confidence</small><strong id="jevConfidence">—</strong></span>
               <span><small>Latency</small><strong id="jevLatency">—</strong></span>
@@ -90,14 +90,6 @@
               <span class="panel-label">Recent turns</span>
               <ol class="decision-history" id="jevHistory"><li>No decisions yet</li></ol>
             </div>
-            <label class="policy-control" for="jevPolicy">
-              <span>Planning policy</span>
-              <select id="jevPolicy">
-                <option value="events">Event-driven</option>
-                <option value="every-tile">Every tile experiment</option>
-              </select>
-              <small id="jevPolicyHint">Jev replans at junctions, danger, power changes, or detected loops.</small>
-            </label>
             <button class="secondary-button" id="controlModeButton" type="button" disabled>Let Jev drive</button>
           </section>
 
@@ -147,7 +139,7 @@
               <span>JSON</span>
             </div>
             <p class="telemetry-help">Every decision includes the full maze, remaining food, Pacman, every ghost's position and heading, lives, power timer, and computed route metrics. Score is intentionally excluded.</p>
-            <pre id="jevStatePayload">Jev has not received a junction state yet.</pre>
+            <pre id="jevStatePayload">Jev has not received a tile state yet.</pre>
           </article>
 
           <article class="telemetry-card">
@@ -169,12 +161,12 @@
             <dl class="telemetry-metrics">
               <div><dt>Requests</dt><dd id="jevRequestCount">0</dd></div>
               <div><dt>Jev responses</dt><dd id="jevResponseCount">0</dd></div>
-              <div><dt>Fallbacks</dt><dd id="jevFallbackCount">0</dd></div>
-              <div><dt>Event replans</dt><dd id="jevEventReplans">0</dd></div>
+              <div><dt>Request errors</dt><dd id="jevErrorCount">0</dd></div>
+              <div><dt>Decision waits</dt><dd id="jevDecisionWaits">0</dd></div>
               <div><dt>Dots / request</dt><dd id="jevDotsPerRequest">—</dd></div>
               <div><dt>Score / request</dt><dd id="jevScorePerRequest">—</dd></div>
               <div><dt>Deaths</dt><dd id="jevDeaths">0</dd></div>
-              <div><dt>Loop reversals blocked</dt><dd id="jevAntiLoopOverrides">0</dd></div>
+              <div><dt>Loop routes excluded</dt><dd id="jevLoopRoutesExcluded">0</dd></div>
               <div><dt>Total tokens</dt><dd id="jevTokenCount">0</dd></div>
               <div><dt>Average latency</dt><dd id="jevAverageLatency">—</dd></div>
             </dl>

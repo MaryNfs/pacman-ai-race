@@ -99,24 +99,11 @@ export function chooseRouteFallback(routes, frightened = false) {
   }, null)?.route;
 }
 
-export function guardAgainstRepeatedReversal(routes, selectedRouteId, frightened = false) {
-  const selectedRoute = routes.find((route) => route.id === selectedRouteId);
-  if (!selectedRoute || !isNoProgressReversal(selectedRoute)) {
-    return { route: selectedRoute, overridden: false, proposedRoute: selectedRoute };
-  }
-
+export function filterSelectableRoutes(routes, frightened = false) {
   const alternatives = routes.filter((route) => !isNoProgressReversal(route));
   const alternative = chooseRouteFallback(alternatives, frightened);
-  if (!alternative || isSafetyUpgrade(selectedRoute, alternative, frightened)) {
-    return { route: selectedRoute, overridden: false, proposedRoute: selectedRoute };
-  }
-
-  return {
-    route: alternative,
-    overridden: true,
-    proposedRoute: selectedRoute,
-    reason: "blocked a no-progress U-turn because another route was at least as safe",
-  };
+  if (!alternative) return routes;
+  return routes.filter((route) => !isNoProgressReversal(route) || isSafetyUpgrade(route, alternative, frightened));
 }
 
 function assessRoute({ id, directions, path, endpoint, ghosts, pellets, powerPellets, frightenedFor, trail, localFood, currentHeading, playerSpeed, planningLeadTime, rows }) {

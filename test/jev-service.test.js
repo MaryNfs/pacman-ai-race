@@ -11,6 +11,10 @@ const validPayload = {
 };
 
 test("decision payload validation rejects duplicate or malformed routes", () => {
+  assert.doesNotThrow(() => validateDecisionPayload({
+    ...validPayload,
+    routeCandidates: [validPayload.routeCandidates[0]],
+  }));
   assert.throws(() => validateDecisionPayload({
     ...validPayload,
     routeCandidates: [validPayload.routeCandidates[0], validPayload.routeCandidates[0]],

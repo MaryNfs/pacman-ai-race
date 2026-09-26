@@ -7,10 +7,10 @@ const decisionInstructions = {
   task: "Choose Pacman's best two-junction route. Pacman will execute the first move, then replan with fresh state.",
   priorities: [
     "In normal mode, avoid predicted active-ghost collision risk before pursuing food.",
-    "When the decision trigger is corridor danger, explicitly compare continuing with reversing; survival takes priority over the previous plan.",
+    "Reconsider ghost timing and the complete map at every tile; survival takes priority over the previous direction.",
     "In power mode, prefer a safe edible-ghost interception that finishes before power mode expires.",
     "Use the code strategic rank as the default ordering; it already combines safety, food progress, nearby-dot cleanup, escape options, and repetition.",
-    "Do not choose a HIGH LOOP RISK route unless it moves Pacman from a worse ghost-danger band to a safer one; the game will reject no-progress reversals otherwise.",
+    "Recent foodless reversals are filtered out before this choice unless they provide a genuine ghost-safety upgrade.",
     "During the final dots, strongly prefer routes that reduce maze distance to the nearest remaining dot, even when the route itself collects no food yet.",
     "Choose exactly one supplied route candidate.",
   ],
@@ -24,8 +24,8 @@ export function validateDecisionPayload(payload) {
   if (!payload.state || typeof payload.state !== "object" || Array.isArray(payload.state)) {
     throw requestError("state must be an object.");
   }
-  if (!Array.isArray(payload.routeCandidates) || payload.routeCandidates.length < 2 || payload.routeCandidates.length > 16) {
-    throw requestError("routeCandidates must contain between two and sixteen routes.");
+  if (!Array.isArray(payload.routeCandidates) || payload.routeCandidates.length < 1 || payload.routeCandidates.length > 16) {
+    throw requestError("routeCandidates must contain between one and sixteen routes.");
   }
 
   const seen = new Set();
