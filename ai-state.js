@@ -1,7 +1,7 @@
 import { DIRECTIONS, LEVEL_MAP, OPPOSITE, availableDirections, cellKey, isWalkable, mazeRegion, nextCell } from "./game-core.js";
 import { enumerateRouteCandidates } from "./route-planner.js";
 
-export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, score, recentTrail = [], playerSpeed = 6.35, planningLeadTime = 0 }) {
+export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, score, lives = 3, recentTrail = [], playerSpeed = 6.35, planningLeadTime = 0 }) {
   const options = availableDirections(player.row, player.col);
   const frightened = frightenedFor > 0;
 
@@ -36,14 +36,20 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
       objective: "Survive and clear every food dot.",
       mode: frightened ? "power mode: ghosts are edible" : "normal mode: ghosts are dangerous",
       progress: progressLabel(pellets.size + powerPellets.size),
+      score,
+      lives,
       currentHeading: player.direction,
+      plannedDecisionPosition: { row: player.row, col: player.col },
+      powerModeSecondsRemaining: rounded(frightenedFor),
+      recentPacmanTiles: recentTrail.slice(-8),
       forecast: {
         planStartsInSeconds: rounded(planningLeadTime),
         method: "conservative shortest-path ghost timing from the live snapshot",
       },
+      levelNumber: level,
       level: level > 3 ? "advanced speed" : level > 1 ? "increased speed" : "base speed",
       scoreBand: score >= 5_000 ? "high score run" : score >= 1_000 ? "established run" : "early run",
-      wholeMazeFoodScan: buildMazeFoodScan(player, pellets, powerPellets),
+      wholeMazeSnapshot: buildMazeSnapshot(player, ghosts, pellets, powerPellets, frightenedFor),
       directionAssessments: Object.fromEntries(Object.keys(DIRECTIONS).map((direction) => {
         const assessment = assessmentByDirection.get(direction);
         return [direction, assessment
@@ -84,16 +90,24 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
   };
 }
 
-export function buildMazeFoodScan(player, pellets, powerPellets, rows = LEVEL_MAP) {
+export function buildMazeSnapshot(player, ghosts, pellets, powerPellets, frightenedFor = 0, rows = LEVEL_MAP) {
   const regions = {};
   for (const key of [...pellets, ...powerPellets]) {
     const region = mazeRegion(key, rows);
     regions[region] = (regions[region] || 0) + 1;
   }
 
+  const ghostTiles = new Map();
+  ghosts.forEach((ghost, index) => {
+    const key = cellKey(Math.round(ghost.row), Math.round(ghost.col));
+    const marker = ghostMarker(index, frightenedFor > 0);
+    ghostTiles.set(key, ghostTiles.has(key) ? "*" : marker);
+  });
+
   const mapTopToBottom = rows.map((row, rowIndex) => [...row].map((cell, colIndex) => {
     const key = cellKey(rowIndex, colIndex);
     if (rowIndex === player.row && colIndex === player.col) return "P";
+    if (ghostTiles.has(key)) return ghostTiles.get(key);
     if (pellets.has(key)) return ".";
     if (powerPellets.has(key)) return "o";
     if (cell === "#" || cell === "=") return cell;
@@ -101,12 +115,33 @@ export function buildMazeFoodScan(player, pellets, powerPellets, rows = LEVEL_MA
   }).join(""));
 
   return {
-    legend: "# wall, . food dot, o power dot, P planned junction, blank cleared path",
+    legend: "# wall, . food dot, o power dot, P planned decision cell, A/B/C dangerous ghosts, a/b/c edible ghosts, * stacked ghosts, blank cleared path",
     remainingRegularDots: pellets.size,
     remainingPowerDots: powerPellets.size,
     dotsByRegion: regions,
+    ghosts: ghosts.map((ghost, index) => ({
+      marker: ghostMarker(index, frightenedFor > 0),
+      name: ghost.name || `Ghost ${index + 1}`,
+      position: { row: rounded(ghost.row), col: rounded(ghost.col) },
+      tile: { row: Math.round(ghost.row), col: Math.round(ghost.col) },
+      heading: ghost.direction || "unknown",
+      speedTilesPerSecond: rounded(ghost.speed || 5.2),
+      state: frightenedFor > 0 ? "edible" : "dangerous",
+      approximateTileDistanceFromPacman: rounded(approximateDistance(player, ghost, rows)),
+    })),
     mapTopToBottom,
   };
+}
+
+function ghostMarker(index, frightened) {
+  const marker = String.fromCharCode(65 + Math.min(index, 25));
+  return frightened ? marker.toLowerCase() : marker;
+}
+
+function approximateDistance(player, ghost, rows) {
+  const rowDistance = Math.abs(player.row - ghost.row);
+  const rawColDistance = Math.abs(player.col - ghost.col);
+  return rowDistance + Math.min(rawColDistance, rows[0].length - rawColDistance);
 }
 
 function describeManeuver(direction, currentHeading) {

@@ -14,7 +14,7 @@ const decisionInstructions = {
     "During the final dots, strongly prefer routes that reduce maze distance to the nearest remaining dot, even when the route itself collects no food yet.",
     "Choose exactly one supplied route candidate.",
   ],
-  note: "Route simulation, timing, food counts, whole-maze food positions, and escape routes were calculated by the game. Treat them as facts; do not recalculate them.",
+  note: "The state contains a fresh whole-board snapshot with Pacman, ghosts, walls, food, score, lives, and power timing. Route simulation and strategic ranks were calculated by the game; use them instead of redoing pathfinding from the raw map.",
 };
 
 export function validateDecisionPayload(payload) {

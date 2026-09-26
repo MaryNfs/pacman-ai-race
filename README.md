@@ -37,7 +37,8 @@ The API key stays on the local Node server. It is never included in frontend Jav
 
 ## How Jev drives
 
-- Code scans every remaining dot in the maze, then ranks every legal route across the next two junctions using ghost timing, local-area cleanup, distance to future food, escape options, and recent-path overlap—the exact work Jev's documentation recommends keeping deterministic.
+- Before every decision, code builds a fresh whole-board snapshot containing the full maze, every remaining dot, Pacman's planned position and heading, every ghost's position and heading, score, lives, power timer, and recent path.
+- Code then ranks every legal route across the next two junctions using ghost timing, local-area cleanup, distance to future food, escape options, and recent-path overlap—the exact work Jev's documentation recommends keeping deterministic.
 - Corridors and forced turns are handled locally, so Jev is called only when there is a meaningful choice.
 - Before each upcoming junction, the local server sends compact structured route summaries and one typed `choice` question through the official `@typesafe-ai/sdk`.
 - Jev receives routes beginning with every walkable direction at that junction, including reverse/U-turn options. The state also lists blocked directions explicitly so the omission is never ambiguous.

@@ -1,18 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDecisionRequest, buildMazeFoodScan, findCorridorThreat, findNextJunction, nearestDistance } from "../ai-state.js";
+import { buildDecisionRequest, buildMazeSnapshot, findCorridorThreat, findNextJunction, nearestDistance } from "../ai-state.js";
 import { cellKey, parseLevel } from "../game-core.js";
 
 test("decision state exposes every walkable choice, including a U-turn", () => {
   const level = parseLevel();
   const decision = buildDecisionRequest({
     player: { row: 3, col: 1, direction: "down" },
-    ghosts: [{ row: 3, col: 5 }],
+    ghosts: [{ row: 3, col: 5, name: "Blaze", direction: "left", speed: 5.2 }],
     pellets: level.pellets,
     powerPellets: level.powerPellets,
     frightenedFor: 0,
     level: 1,
     score: 200,
+    lives: 2,
   });
 
   assert.deepEqual([...new Set(decision.routeChoices.map((move) => move.direction))].sort(), ["down", "right", "up"]);
@@ -23,12 +24,16 @@ test("decision state exposes every walkable choice, including a U-turn", () => {
   assert.equal(typeof Object.values(decision.state.routeCandidates)[0].nearestGhostLeadSeconds, "number");
   assert.equal(typeof Object.values(decision.state.routeCandidates)[0].nearestRemainingDotDistance, "number");
   assert.equal(Object.values(decision.state.routeCandidates)[0].codeStrategicRank, 1);
-  assert.equal(decision.state.wholeMazeFoodScan.mapTopToBottom.length, 23);
+  assert.equal(decision.state.score, 200);
+  assert.equal(decision.state.lives, 2);
+  assert.equal(decision.state.wholeMazeSnapshot.mapTopToBottom.length, 23);
+  assert.equal(decision.state.wholeMazeSnapshot.ghosts[0].name, "Blaze");
 });
 
-test("whole-maze scan preserves every remaining dot and its region", () => {
-  const scan = buildMazeFoodScan(
+test("whole-maze snapshot preserves food and places visible ghost state", () => {
+  const scan = buildMazeSnapshot(
     { row: 15, col: 10 },
+    [{ row: 3, col: 5, name: "Blaze", direction: "right", speed: 5.25 }],
     new Set(["1,1", "1,2", "21,10"]),
     new Set(["21,1"]),
   );
@@ -39,6 +44,29 @@ test("whole-maze scan preserves every remaining dot and its region", () => {
   assert.equal(scan.mapTopToBottom[1][1], ".");
   assert.equal(scan.mapTopToBottom[21][1], "o");
   assert.equal(scan.mapTopToBottom[15][10], "P");
+  assert.equal(scan.mapTopToBottom[3][5], "A");
+  assert.deepEqual(scan.ghosts[0], {
+    marker: "A",
+    name: "Blaze",
+    position: { row: 3, col: 5 },
+    tile: { row: 3, col: 5 },
+    heading: "right",
+    speedTilesPerSecond: 5.25,
+    state: "dangerous",
+    approximateTileDistanceFromPacman: 17,
+  });
+});
+
+test("whole-maze snapshot marks frightened ghosts as edible", () => {
+  const scan = buildMazeSnapshot(
+    { row: 15, col: 10 },
+    [{ row: 15, col: 8, direction: "left", speed: 4 }],
+    new Set(),
+    new Set(),
+    5,
+  );
+  assert.equal(scan.mapTopToBottom[15][8], "a");
+  assert.equal(scan.ghosts[0].state, "edible");
 });
 
 test("nearest distance is calculated in code around maze walls", () => {

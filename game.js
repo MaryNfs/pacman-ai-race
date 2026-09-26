@@ -368,6 +368,7 @@ function makeDecisionRequest(player, { ghosts = ghostSnapshot(), recentTrail = s
     frightenedFor: state.frightenedFor,
     level: state.level,
     score: state.score,
+    lives: state.lives,
     recentTrail,
     playerSpeed: state.player.speed,
     planningLeadTime,
@@ -379,7 +380,12 @@ function makeDecisionRequest(player, { ghosts = ghostSnapshot(), recentTrail = s
 }
 
 function ghostSnapshot() {
-  return state.ghosts.map((ghost) => ({ ...renderedPosition(ghost), direction: ghost.direction, speed: ghost.speed }));
+  return state.ghosts.map((ghost) => ({
+    ...renderedPosition(ghost),
+    name: ghost.name,
+    direction: ghost.direction,
+    speed: ghost.speed,
+  }));
 }
 
 async function requestJevDecision(decision, junctionKey, trigger) {
