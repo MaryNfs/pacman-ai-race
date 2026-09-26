@@ -1,7 +1,8 @@
 .DS_Store
 node_modules/
+.venv/
+.laya-venv/
 coverage/
 .env
 .env.*
 !.env.example
-

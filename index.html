@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#080b18" />
     <meta
       name="description"
-      content="Pacman Neon Run — watch TypeSafe AI's Jev choose every turn in a live maze chase."
+      content="Pacman Neon Run — watch hosted Jev or self-hosted Laya choose every turn in a live maze chase."
     />
-    <title>Pacman + Jev — Neon Run</title>
+    <title>Pacman + AI — Neon Run</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -18,7 +18,7 @@
           <span class="brand-mark" aria-hidden="true"></span>
           <div>
             <p class="eyebrow">Neon run</p>
-            <h1>PACMAN <span class="brand-plus">× JEV</span></h1>
+            <h1>PACMAN <span class="brand-plus">× AI</span></h1>
           </div>
         </div>
         <button class="icon-button" id="soundButton" type="button" aria-label="Mute sound" aria-pressed="false">
@@ -49,12 +49,13 @@
             <div class="overlay-card">
               <span class="mini-packman" aria-hidden="true"></span>
               <p class="overlay-kicker">Choose your pilot</p>
-              <h2>Play it—or watch<br />Jev decide.</h2>
+              <h2>Play it—or watch<br />AI decide.</h2>
               <div class="start-actions">
                 <button class="primary-button" id="jevStartButton" type="button" disabled>Checking Jev…</button>
+                <button class="primary-button laya-button" id="layaStartButton" type="button" disabled>Checking Laya…</button>
                 <button class="secondary-button start-manual" id="startButton" type="button">Play manually</button>
               </div>
-              <p class="overlay-hint" id="jevSetupHint">Connecting to the local Jev gateway…</p>
+              <p class="overlay-hint" id="jevSetupHint">Checking the available AI pilots…</p>
             </div>
           </div>
 
@@ -69,15 +70,15 @@
         </div>
 
         <aside class="side-panel">
-          <section class="panel-card jev-card" aria-label="Jev decision inspector">
+          <section class="panel-card jev-card" aria-label="AI decision inspector">
             <div class="jev-heading">
               <div>
-                <span class="panel-label">Jev pilot</span>
+                <span class="panel-label" id="pilotLabel">AI pilot</span>
                 <strong id="jevDecision">STANDBY</strong>
               </div>
               <span class="status-pill checking" id="jevStatus"><span></span>Checking</span>
             </div>
-            <p class="decision-caption" id="jevCaption">Jev chooses complete routes while the next route is planned ahead.</p>
+            <p class="decision-caption" id="jevCaption">Choose Jev or Laya to watch it plan complete routes.</p>
             <div class="decision-meta">
               <span><small>Confidence</small><strong id="jevConfidence">—</strong></span>
               <span><small>Latency</small><strong id="jevLatency">—</strong></span>
@@ -90,7 +91,7 @@
               <span class="panel-label">Recent turns</span>
               <ol class="decision-history" id="jevHistory"><li>No decisions yet</li></ol>
             </div>
-            <button class="secondary-button" id="controlModeButton" type="button" disabled>Let Jev drive</button>
+            <button class="secondary-button" id="controlModeButton" type="button" disabled>Let AI drive</button>
           </section>
 
           <section class="panel-card">
@@ -119,15 +120,15 @@
         <header class="telemetry-header">
           <div>
             <p class="eyebrow">Decision trace</p>
-            <h2 id="telemetryTitle">What Jev sees and returns</h2>
+            <h2 id="telemetryTitle">What the AI pilot sees and returns</h2>
           </div>
-          <p id="jevActivity" class="telemetry-activity">Waiting for Jev mode and the first decision checkpoint.</p>
+          <p id="jevActivity" class="telemetry-activity">Waiting for an AI pilot and the first decision checkpoint.</p>
         </header>
 
-        <div class="decision-flow" aria-label="Jev decision flow">
+        <div class="decision-flow" aria-label="AI decision flow">
           <span><b>1</b> Code scans the whole maze</span>
           <i aria-hidden="true">→</i>
-          <span><b>2</b> Jev chooses a simulated route</span>
+          <span><b>2</b> The selected pilot chooses a route</span>
           <i aria-hidden="true">→</i>
           <span><b>3</b> The game validates and acts</span>
         </div>
@@ -139,7 +140,7 @@
               <span>JSON</span>
             </div>
             <p class="telemetry-help">Every decision includes the full maze, remaining food, Pacman, every ghost's position and heading, lives, power timer, and computed route metrics. Score is intentionally excluded.</p>
-            <pre id="jevStatePayload">Jev has not received a tile state yet.</pre>
+            <pre id="jevStatePayload">No AI pilot has received a tile state yet.</pre>
           </article>
 
           <article class="telemetry-card">
@@ -147,7 +148,7 @@
               <h3>Two-junction routes</h3>
               <span>Choice</span>
             </div>
-            <p class="telemetry-help">Code ranks every legal two-junction route for safety, food cleanup, and loop risk. Jev receives the ordered summaries as typed Choice criteria.</p>
+            <p class="telemetry-help">Code ranks every legal two-junction route for safety, food cleanup, and loop risk. The selected pilot receives the ordered summaries as typed Choice criteria.</p>
             <ul class="candidate-details" id="jevCandidateDetails">
               <li class="empty-candidate">Simulated routes and their risk summaries will appear here.</li>
             </ul>
@@ -160,7 +161,7 @@
             </div>
             <dl class="telemetry-metrics">
               <div><dt>Requests</dt><dd id="jevRequestCount">0</dd></div>
-              <div><dt>Jev responses</dt><dd id="jevResponseCount">0</dd></div>
+              <div><dt>AI responses</dt><dd id="jevResponseCount">0</dd></div>
               <div><dt>Request errors</dt><dd id="jevErrorCount">0</dd></div>
               <div><dt>Decision waits</dt><dd id="jevDecisionWaits">0</dd></div>
               <div><dt>Dots / request</dt><dd id="jevDotsPerRequest">—</dd></div>
@@ -170,7 +171,7 @@
               <div><dt>Total tokens</dt><dd id="jevTokenCount">0</dd></div>
               <div><dt>Average latency</dt><dd id="jevAverageLatency">—</dd></div>
             </dl>
-            <p class="telemetry-help telemetry-note">Jev produces a typed decision and calibrated probabilities, not a hidden chain-of-thought explanation.</p>
+            <p class="telemetry-help telemetry-note">Both pilots produce a typed decision and calibrated probabilities, not a hidden chain-of-thought explanation.</p>
           </article>
         </div>
 

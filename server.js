@@ -2,34 +2,52 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createJevService } from "./jev-service.js";
+import { createDecisionProviders, PROVIDER_IDS } from "./ai-service.js";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const port = Number(process.env.PORT) || 4173;
 const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8" };
-const jev = createJevService();
+const providers = createDecisionProviders();
 
 createServer(async (request, response) => {
   const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
 
-  if (request.method === "GET" && pathname === "/api/jev/status") {
-    sendJson(response, 200, { configured: jev.configured, model: jev.model });
+  if (request.method === "GET" && pathname === "/api/ai/status") {
+    const statuses = await Promise.all(Object.entries(providers).map(async ([id, provider]) => [id, {
+      id,
+      name: provider.name,
+      configured: provider.configured,
+      available: await provider.isAvailable(),
+      model: provider.model,
+      selfHosted: provider.selfHosted,
+    }]));
+    sendJson(response, 200, {
+      providers: Object.fromEntries(statuses),
+    });
     return;
   }
 
-  if (request.method === "POST" && pathname === "/api/jev/decide") {
+  if (request.method === "POST" && pathname === "/api/ai/decide") {
     try {
-      const result = await jev.decide(await readJson(request));
+      const payload = await readJson(request);
+      if (!PROVIDER_IDS.has(payload?.provider)) {
+        const error = new Error("provider must be either jev or laya.");
+        error.statusCode = 400;
+        error.code = "INVALID_AI_PROVIDER";
+        throw error;
+      }
+      const provider = providers[payload.provider];
+      const result = await provider.decide(payload);
       sendJson(response, 200, result);
     } catch (error) {
       const statusCode = Number.isInteger(error.statusCode) ? error.statusCode : 502;
-      if (statusCode >= 500 && error.code !== "JEV_NOT_CONFIGURED") {
-        console.error(`[Jev] ${error.name}: ${error.message}`);
+      if (statusCode >= 500 && error.code !== "AI_PROVIDER_NOT_CONFIGURED") {
+        console.error(`[AI] ${error.name}: ${error.message}`);
       }
       sendJson(response, statusCode, {
-        code: error.code || "JEV_REQUEST_FAILED",
-        message: statusCode >= 500 && error.code !== "JEV_NOT_CONFIGURED"
-          ? "Jev could not make a decision."
+        code: error.code || "AI_REQUEST_FAILED",
+        message: statusCode >= 500 && error.code !== "AI_PROVIDER_NOT_CONFIGURED"
+          ? "The selected AI provider could not make a decision."
           : error.message,
       });
     }
@@ -63,7 +81,8 @@ createServer(async (request, response) => {
   }
 }).listen(port, "127.0.0.1", () => {
   console.log(`Pacman is running at http://localhost:${port}`);
-  console.log(`Jev pilot: ${jev.configured ? `ready (${jev.model})` : "not configured — set TYPESAFE_API_KEY"}`);
+  console.log(`Jev pilot: ${providers.jev.configured ? `ready (${providers.jev.model})` : "not configured — set TYPESAFE_API_KEY"}`);
+  console.log(`Laya pilot: ${providers.laya.configured ? `configured (${providers.laya.model}); readiness is checked at /api/ai/status` : "not configured — set LAYA_BASE_URL"}`);
 });
 
 async function readJson(request) {

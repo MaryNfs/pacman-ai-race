@@ -221,6 +221,9 @@ kbd {
 }
 .primary-button:hover { transform: translateY(-2px); box-shadow: 0 10px 34px rgba(255,226,52,.28); }
 .primary-button:disabled { color: #747989; background: #252a3b; box-shadow: none; cursor: not-allowed; transform: none; }
+.laya-button { color: #07151a; background: var(--cyan); box-shadow: 0 8px 28px rgba(36,224,255,.16); }
+.laya-button:hover { box-shadow: 0 10px 34px rgba(36,224,255,.26); }
+.laya-button:disabled { color: #747989; background: #252a3b; box-shadow: none; }
 .start-actions { display: flex; flex-direction: column; align-items: center; gap: 9px; }
 .start-manual { width: auto; min-width: 170px; margin-top: 0; }
 .overlay-hint { margin-top: 18px; color: var(--muted); font-size: 12px; }
