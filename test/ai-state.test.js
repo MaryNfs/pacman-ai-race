@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDecisionRequest, buildMazeSnapshot, findCorridorThreat, findNextJunction, nearestDistance, projectRouteState } from "../ai-state.js";
+import { buildDecisionRequest, buildMazeSnapshot, findCorridorThreat, findNextJunction, nearestDistance, projectRouteState, selectablePrefetchedRoute } from "../ai-state.js";
 import { cellKey, parseLevel } from "../game-core.js";
 
 test("decision state evaluates every legal choice and exposes only collision-free candidates", () => {
@@ -34,6 +34,15 @@ test("decision state evaluates every legal choice and exposes only collision-fre
   assert.equal(typeof decision.state.foodNavigation.shortestDistanceFromDecision, "number");
   assert.deepEqual(decision.state.foodNavigation.remainingDotsByRegion, decision.state.wholeMazeSnapshot.dotsByRegion);
   assert.equal(typeof Object.values(decision.state.routeCandidates)[0].targetTravelTiles, "number");
+});
+
+test("prefetched route reuse requires the route to remain selectable in the live forecast", () => {
+  const safe = { id: "left", collisionOccurred: false };
+  const fatal = { id: "right", collisionOccurred: true };
+  const decision = { routeChoices: [{ id: "left" }], routes: [safe, fatal] };
+  assert.equal(selectablePrefetchedRoute(decision, "left"), safe);
+  assert.equal(selectablePrefetchedRoute(decision, "right"), null);
+  assert.equal(selectablePrefetchedRoute(decision, "up"), null);
 });
 
 test("whole-maze snapshot preserves food and places visible ghost state", () => {

@@ -25,7 +25,7 @@ import {
   createSimulationState,
   simulatePath,
 } from "./game-core.js";
-import { buildDecisionRequest } from "./ai-state.js";
+import { buildDecisionRequest, selectablePrefetchedRoute } from "./ai-state.js";
 
 const pageParams = new URLSearchParams(window.location.search);
 const comparisonEmbed = pageParams.get("embed") === "1";
@@ -275,6 +275,8 @@ function endGame(completed = false) {
     averageSearchTimeMs: state.ai.metrics.requests > 0 ? state.ai.metrics.totalSearchTimeMs / state.ai.metrics.requests : 0,
     maximumSearchTimeMs: state.ai.metrics.maximumSearchTimeMs,
     lastDeathDiagnostic: state.ai.lastDeathDiagnostic,
+    prefetchInvalidations: state.ai.metrics.prefetchInvalidations,
+    prefetchRevalidations: state.ai.metrics.prefetchRevalidations,
     seed: initialRandomSeed,
     model: state.ai.model,
   });
@@ -329,14 +331,26 @@ function chooseAiStep(player) {
   if (state.ai.activePath.length > 0) return startNextPlannedStep(player);
 
   if (state.ai.decisionReady?.junctionKey === checkpointKey) {
+    let ready = state.ai.decisionReady;
     if (state.ai.decisionReady.expectedStateKey && state.ai.decisionReady.expectedStateKey !== decisionStateKey()) {
-      state.ai.decisionReady = null;
-      state.ai.waitingForKey = null;
-      state.ai.metrics.prefetchInvalidations += 1;
-      return false;
+      const actualDecision = makeDecisionRequest(player, { trigger: "prefetch arrival validation" });
+      const validatedRoute = selectablePrefetchedRoute(actualDecision, ready.route.id);
+      if (!validatedRoute) {
+        state.ai.decisionReady = null;
+        state.ai.metrics.prefetchInvalidations += 1;
+        markAiWait(checkpointKey);
+        requestAiDecision(actualDecision, checkpointKey, "prefetch safety changed");
+        return false;
+      }
+      state.ai.metrics.prefetchRevalidations += 1;
+      ready = {
+        ...ready,
+        route: validatedRoute,
+        selection: selectionTelemetry(actualDecision, validatedRoute),
+      };
     }
-    const route = state.ai.decisionReady.route;
-    state.ai.lastSelection = state.ai.decisionReady.selection;
+    const route = ready.route;
+    state.ai.lastSelection = ready.selection;
     state.ai.decisionReady = null;
     state.ai.waitingForKey = null;
     state.ai.activePath = route.path.map((cell) => ({ ...cell }));
@@ -523,17 +537,7 @@ async function requestAiDecision(decision, junctionKey, trigger, expectedStateKe
     if (requestId !== state.ai.requestId || state.controlMode !== "ai" || provider.id !== state.ai.providerId) return;
     const route = decision.routes.find((candidate) => candidate.id === result.routeId);
     if (!route) throw new Error(`${provider.name} selected a route that is no longer available.`);
-    const selection = {
-      level: state.level,
-      decisionPosition: { row: decision.meta.row, col: decision.meta.col },
-      routeId: route.id,
-      candidateSafetyForecast: decision.state.routeCandidates[route.id],
-      predictedMinimumClearance: route.minClearance,
-      predictedSurvivalHorizon: route.survivalHorizon,
-      collisionPredicted: route.collisionOccurred,
-      searchDepth: route.searchDepth,
-      simulationSeed: route.simulationSeed,
-    };
+    const selection = selectionTelemetry(decision, route);
     state.ai.decisionReady = { route, junctionKey, trigger, expectedStateKey, selection };
     showAiDecision(result, decision);
   } catch (error) {
@@ -547,6 +551,20 @@ async function requestAiDecision(decision, junctionKey, trigger, expectedStateKe
       state.ai.pendingFor = null;
     }
   }
+}
+
+function selectionTelemetry(decision, route) {
+  return {
+    level: state.level,
+    decisionPosition: { row: decision.meta.row, col: decision.meta.col },
+    routeId: route.id,
+    candidateSafetyForecast: decision.state.routeCandidates[route.id],
+    predictedMinimumClearance: route.minClearance,
+    predictedSurvivalHorizon: route.survivalHorizon,
+    collisionPredicted: route.collisionOccurred,
+    searchDepth: route.searchDepth,
+    simulationSeed: route.simulationSeed,
+  };
 }
 
 function updateGhosts(delta) {
@@ -1045,6 +1063,7 @@ function freshAiMetrics() {
     deaths: 0,
     loopRoutesExcluded: 0,
     prefetchInvalidations: 0,
+    prefetchRevalidations: 0,
     predictedSafeDeaths: 0,
     forcedDangerStates: 0,
     totalSearchTimeMs: 0,

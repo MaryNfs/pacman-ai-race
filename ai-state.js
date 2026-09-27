@@ -132,6 +132,11 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
   };
 }
 
+export function selectablePrefetchedRoute(decision, routeId) {
+  if (!decision.routeChoices.some((route) => route.id === routeId)) return null;
+  return decision.routes.find((route) => route.id === routeId) || null;
+}
+
 export function buildMazeSnapshot(player, ghosts, pellets, powerPellets, frightenedFor = 0, rows = LEVEL_MAP) {
   const regions = {};
   for (const key of [...pellets, ...powerPellets]) {

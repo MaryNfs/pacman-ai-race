@@ -4,7 +4,9 @@ export const DOT_PAUSE_SECONDS = 1 / 60;
 export const POWER_DOT_PAUSE_SECONDS = 3 / 60;
 export const POWER_MODE_SECONDS = 8;
 export const COLLISION_RADIUS = 0.62;
-export const SIMULATION_STEP_SECONDS = 1 / 120;
+// Match the live loop's maximum step so projected arrivals do not drift from
+// the world they predict. At current actor speeds this remains sub-tile.
+export const SIMULATION_STEP_SECONDS = 1 / 60;
 
 export const LEVEL_MAP = Object.freeze([
   "#####################",

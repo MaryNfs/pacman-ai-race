@@ -19,6 +19,7 @@ import {
   ghostTarget,
   makeActor,
   simulatePath,
+  SIMULATION_STEP_SECONDS,
 } from "../game-core.js";
 
 test("maze is rectangular and contains all required actors", () => {
@@ -81,6 +82,7 @@ test("arcade-style movement keeps Pacman only slightly faster before dot pauses"
   assert.equal(ghostSpeed(1, true), 3.5);
   assert.equal(DOT_PAUSE_SECONDS, 1 / 60);
   assert.equal(POWER_DOT_PAUSE_SECONDS, 3 / 60);
+  assert.equal(SIMULATION_STEP_SECONDS, 1 / 60);
 });
 
 test("invalid uneven mazes are rejected", () => {
