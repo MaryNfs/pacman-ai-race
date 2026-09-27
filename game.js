@@ -13,6 +13,13 @@ import {
 } from "./game-core.js";
 import { buildDecisionRequest, projectRouteState } from "./ai-state.js";
 
+const pageParams = new URLSearchParams(window.location.search);
+const comparisonEmbed = pageParams.get("embed") === "1";
+const lockedProviderId = ["jev", "laya"].includes(pageParams.get("provider"))
+  ? pageParams.get("provider")
+  : null;
+if (comparisonEmbed) document.body.classList.add("comparison-embed");
+
 const canvas = document.querySelector("#gameCanvas");
 const context = canvas.getContext("2d");
 const elements = {
@@ -80,8 +87,10 @@ const state = {
   frightenedFor: 0,
   pauseStartedAt: 0,
   lastTime: 0,
-  muted: false,
+  elapsedTime: 0,
+  muted: comparisonEmbed,
   audio: null,
+  randomSeed: 0x51a7c0de,
   controlMode: "manual",
   manualQueue: [],
   trail: [],
@@ -144,6 +153,8 @@ function resetGame() {
   state.score = 0;
   state.level = 1;
   state.lives = 3;
+  state.elapsedTime = 0;
+  state.randomSeed = 0x51a7c0de;
   state.ai.history = [];
   state.ai.metrics = freshAiMetrics();
   state.ai.log = [];
@@ -160,7 +171,7 @@ function loadLevel() {
 }
 
 function beginGame(controlMode = state.controlMode) {
-  ensureAudio();
+  if (!state.muted) ensureAudio();
   setControlMode(controlMode);
   resetGame();
   state.status = "playing";
@@ -169,6 +180,7 @@ function beginGame(controlMode = state.controlMode) {
   elements.messageOverlay.classList.add("hidden");
   elements.pauseButton.firstChild.textContent = "Pause ";
   announce(`${state.controlMode === "ai" ? `${activeProvider().name} control` : "Manual game"} started. Level 1.`);
+  notifyComparisonParent("state", { status: "playing" });
   playTone(330, 0.08, "square", 0.035);
   requestAnimationFrame(gameLoop);
 }
@@ -210,6 +222,7 @@ function endGame() {
   elements.messageOverlay.classList.remove("hidden");
   elements.restartButton.focus();
   announce(`Game over. Final score ${state.score}.`);
+  notifyComparisonParent("state", { status: "over", score: state.score, level: state.level });
 }
 
 function togglePause() {
@@ -217,11 +230,13 @@ function togglePause() {
     state.status = "paused";
     elements.pauseButton.firstChild.textContent = "Resume ";
     announce("Game paused.");
+    notifyComparisonParent("state", { status: "paused" });
   } else if (state.status === "paused") {
     state.status = "playing";
     state.lastTime = performance.now();
     elements.pauseButton.firstChild.textContent = "Pause ";
     announce("Game resumed.");
+    notifyComparisonParent("state", { status: "playing" });
   }
 }
 
@@ -455,7 +470,7 @@ function chooseGhostDirection(ghost) {
   if (options.length > 1) options = options.filter((direction) => direction !== OPPOSITE[ghost.direction]);
   if (!options.length) return OPPOSITE[ghost.direction];
 
-  if (state.frightenedFor > 0) return options[Math.floor(Math.random() * options.length)];
+  if (state.frightenedFor > 0) return options[Math.floor(seededRandom() * options.length)];
 
   const target = ghostTarget(ghost);
   return options.reduce((best, direction) => {
@@ -467,7 +482,7 @@ function chooseGhostDirection(ghost) {
 
 function ghostTarget(ghost) {
   const playerPosition = renderedPosition(state.player);
-  const mode = Math.floor(performance.now() / 7000) % 4;
+  const mode = Math.floor(state.elapsedTime / 7) % 4;
   if (mode === 3) return ghost.corner;
   if (ghost.name === "Flicker") {
     const direction = DIRECTIONS[state.player.direction];
@@ -478,6 +493,11 @@ function ghostTarget(ghost) {
     return distance < 36 ? ghost.corner : playerPosition;
   }
   return playerPosition;
+}
+
+function seededRandom() {
+  state.randomSeed = (Math.imul(state.randomSeed, 1_664_525) + 1_013_904_223) >>> 0;
+  return state.randomSeed / 0x1_0000_0000;
 }
 
 function collectAt(row, col) {
@@ -500,7 +520,7 @@ function addScore(points) {
   state.score += points;
   if (state.score > state.highScore) {
     state.highScore = state.score;
-    try { localStorage.setItem("packman-high-score", String(state.highScore)); } catch { /* Private browsing can block storage. */ }
+    try { localStorage.setItem(highScoreStorageKey(), String(state.highScore)); } catch { /* Private browsing can block storage. */ }
   }
   updateHud();
 }
@@ -543,6 +563,7 @@ function gameLoop(now) {
   if (state.status === "playing") {
     updatePlayer(delta);
     if (!isWaitingForAi()) {
+      state.elapsedTime += delta;
       state.frightenedFor = Math.max(0, state.frightenedFor - delta);
       updateGhosts(delta);
       checkCollisions();
@@ -687,6 +708,7 @@ function drawGhost(ghost, now) {
 }
 
 function queueDirection(direction) {
+  if (lockedProviderId) return;
   if (!state.player || !DIRECTIONS[direction]) return;
   if (state.controlMode === "ai") setControlMode("manual");
   if (state.manualQueue.length < 8) state.manualQueue.push(direction);
@@ -975,6 +997,22 @@ async function checkAiStatus() {
 
     const jev = state.ai.providers.jev;
     const laya = state.ai.providers.laya;
+    if (comparisonEmbed && lockedProviderId) {
+      const provider = state.ai.providers[lockedProviderId];
+      if (provider.available) selectAiProvider(lockedProviderId);
+      else {
+        state.ai.configured = false;
+        state.ai.model = provider.model;
+        elements.pilotLabel.textContent = `${provider.name} pilot${provider.selfHosted ? " · self-hosted" : ""}`;
+        elements.jevModel.textContent = provider.model;
+        elements.controlModeButton.disabled = true;
+      }
+      configureComparisonOverlay(provider);
+      setAiStatus(provider.available ? "ready" : "error", provider.available ? "Ready" : "Offline");
+      notifyComparisonParent("readiness", { provider: lockedProviderId, available: provider.available });
+      return provider.available;
+    }
+
     elements.jevStartButton.disabled = !jev.available;
     elements.layaStartButton.disabled = !laya.available;
     elements.jevStartButton.textContent = jev.available ? "Watch Jev play" : "Jev key required";
@@ -997,6 +1035,7 @@ async function checkAiStatus() {
         ? "Laya is configured but its local server is not responding. Start laya-serve and refresh."
         : "Set TYPESAFE_API_KEY for Jev or LAYA_BASE_URL for self-hosted Laya.";
     setAiStatus(firstReady ? "ready" : "error", firstReady ? "Ready" : "Not set");
+    return Boolean(firstReady);
   } catch {
     Object.values(state.ai.providers).forEach((provider) => { provider.available = false; });
     state.ai.configured = false;
@@ -1007,7 +1046,21 @@ async function checkAiStatus() {
     elements.layaStartButton.textContent = "Laya unavailable";
     elements.jevSetupHint.textContent = "The local game server is unavailable.";
     setAiStatus("error", "Offline");
+    if (comparisonEmbed) notifyComparisonParent("readiness", { provider: lockedProviderId, available: false });
+    return false;
   }
+}
+
+function configureComparisonOverlay(provider) {
+  const kicker = elements.startOverlay.querySelector(".overlay-kicker");
+  const heading = elements.startOverlay.querySelector("h2");
+  kicker.textContent = `${provider.name} pilot`;
+  heading.textContent = provider.available ? "Ready for the race." : `${provider.name} is not ready.`;
+  elements.jevSetupHint.textContent = provider.available
+    ? "Use Start both pilots above to begin the comparison."
+    : provider.id === "laya" && provider.configured
+      ? "Start the self-hosted Laya server, then refresh this page."
+      : `Configure ${provider.name} on the local server, then refresh.`;
 }
 
 function updateHud() {
@@ -1028,7 +1081,13 @@ function announce(message) {
 }
 
 function readHighScore() {
-  try { return Number(localStorage.getItem("packman-high-score")) || 0; } catch { return 0; }
+  try { return Number(localStorage.getItem(highScoreStorageKey())) || 0; } catch { return 0; }
+}
+
+function highScoreStorageKey() {
+  return comparisonEmbed && lockedProviderId
+    ? `packman-high-score-${lockedProviderId}`
+    : "packman-high-score";
 }
 
 function ensureAudio() {
@@ -1062,6 +1121,37 @@ function toggleSound() {
   if (!state.muted) { ensureAudio(); playTone(440, 0.08); }
 }
 
+function notifyComparisonParent(type, detail = {}) {
+  if (!comparisonEmbed || window.parent === window) return;
+  window.parent.postMessage({ source: "pacman-pilot", type, provider: lockedProviderId, ...detail }, window.location.origin);
+}
+
+function reportComparisonHeight() {
+  if (!comparisonEmbed) return;
+  const height = document.documentElement.scrollHeight;
+  if (height !== reportComparisonHeight.lastHeight) {
+    reportComparisonHeight.lastHeight = height;
+    notifyComparisonParent("resize", { height });
+  }
+}
+reportComparisonHeight.lastHeight = 0;
+
+if (comparisonEmbed) {
+  window.addEventListener("message", async (event) => {
+    if (event.origin !== window.location.origin || event.source !== window.parent || event.data?.source !== "pacman-comparison") return;
+    if (event.data.type === "start") {
+      const ready = await checkAiStatus();
+      if (ready && state.status !== "playing") beginAiGame(lockedProviderId);
+    }
+    if (event.data.type === "pause" && state.status === "playing") togglePause();
+    if (event.data.type === "resume" && state.status === "paused") togglePause();
+  });
+
+  const resizeObserver = new ResizeObserver(() => window.requestAnimationFrame(reportComparisonHeight));
+  resizeObserver.observe(document.body);
+  window.addEventListener("load", reportComparisonHeight);
+}
+
 const keyDirections = { ArrowUp: "up", w: "up", W: "up", ArrowDown: "down", s: "down", S: "down", ArrowLeft: "left", a: "left", A: "left", ArrowRight: "right", d: "right", D: "right" };
 document.addEventListener("keydown", (event) => {
   if (keyDirections[event.key]) {
@@ -1069,6 +1159,7 @@ document.addEventListener("keydown", (event) => {
     if (event.repeat) return;
     queueDirection(keyDirections[event.key]);
   } else if (event.key === "p" || event.key === "P" || event.key === " ") {
+    if (comparisonEmbed) return;
     event.preventDefault();
     togglePause();
   }

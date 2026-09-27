@@ -242,6 +242,43 @@ kbd {
 
 button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 
+body.comparison-embed {
+  min-height: 0;
+  background: transparent;
+}
+body.comparison-embed::before { display: none; }
+.comparison-embed .game-shell { width: 100%; margin: 0; padding: 12px; }
+.comparison-embed .topbar, .comparison-embed .controls-card, .comparison-embed .mobile-controls,
+.comparison-embed #controlModeButton, .comparison-embed #restartButton { display: none; }
+.comparison-embed .scoreboard { margin-bottom: 10px; padding: 12px 16px; }
+.comparison-embed .play-area { display: block; }
+.comparison-embed canvas { max-height: none; }
+.comparison-embed .side-panel {
+  width: 100%;
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, .42fr);
+  align-items: stretch;
+  gap: 12px;
+}
+.comparison-embed .jev-card { grid-column: auto; }
+.comparison-embed .telemetry-shell { margin-top: 12px; padding: 16px; }
+.comparison-embed .telemetry-header { display: block; }
+.comparison-embed .telemetry-activity { margin-top: 9px; text-align: left; }
+.comparison-embed .decision-flow { align-items: stretch; gap: 6px; }
+.comparison-embed .decision-flow span { display: flex; align-items: center; padding: 8px; }
+.comparison-embed .decision-flow i { align-self: center; }
+.comparison-embed .telemetry-grid { grid-template-columns: 1fr; }
+.comparison-embed .overlay-card .start-actions { display: none; }
+.comparison-embed .overlay h2 { margin-bottom: 12px; font-size: clamp(25px, 5vw, 36px); }
+.comparison-embed .overlay-hint { max-width: 320px; margin: 0 auto; }
+
+@media (max-width: 540px) {
+  .comparison-embed .side-panel { grid-template-columns: 1fr; }
+  .comparison-embed .decision-flow { display: grid; grid-template-columns: 1fr; }
+  .comparison-embed .decision-flow i { display: none; }
+}
+
 @media (max-width: 760px) {
   .game-shell { width: min(560px, calc(100% - 20px)); padding-top: 18px; }
   .play-area { display: block; }

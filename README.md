@@ -1,6 +1,6 @@
 # Pacman × Jev/Laya — Neon Run
 
-A browser-based maze chase game that lets you play manually, watch TypeSafe AI's hosted Jev, or run Laya on your own machine. Both pilots use the same full-maze state and typed route choices. The decision inspector shows the selected route, every candidate probability, confidence, model, latency, and recent plans.
+A browser-based maze chase experiment that runs TypeSafe AI's hosted Jev and self-hosted Laya side by side. Both pilots start from the same maze and receive the same full-board state and typed route choices. Each column exposes its own score, selected route, candidate probabilities, confidence, latency, metrics, and decision log.
 
 ## Run locally
 
@@ -10,13 +10,22 @@ Requirements: Node.js 20 or newer.
 npm install
 ```
 
-To play manually:
+Start the local server:
 
 ```sh
 npm start
 ```
 
-Then open [http://localhost:4173](http://localhost:4173).
+Then open [http://localhost:4173](http://localhost:4173) for the side-by-side race. Solo and manual play remain available at [http://localhost:4173/pilot.html](http://localhost:4173/pilot.html).
+
+## Side-by-side comparison
+
+- Jev runs on the left and Laya runs on the right.
+- The single **Start both pilots** control starts both independent simulations together.
+- Each maze has its decision inspector directly underneath it. Continue scrolling for that pilot's whole-board state, route candidates, run metrics, and decision log.
+- The two games never share scores, ghosts, routes, pending requests, or telemetry.
+- Both simulations use the same deterministic ghost seed and simulation clock, so provider latency does not change the underlying ghost strategy.
+- Comparison mode requires both providers to be ready. It clearly reports a missing Jev key or an unavailable Laya server before the race begins.
 
 ## Enable the Jev pilot
 

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080b18" />
+    <meta
+      name="description"
+      content="Pacman Neon Run — watch hosted Jev or self-hosted Laya choose every turn in a live maze chase."
+    />
+    <title>Pacman + AI — Neon Run</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <header class="topbar">
+        <div class="brand" aria-label="Pacman Neon Run">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <p class="eyebrow">Neon run</p>
+            <h1>PACMAN <span class="brand-plus">× AI</span></h1>
+          </div>
+        </div>
+        <button class="icon-button" id="soundButton" type="button" aria-label="Mute sound" aria-pressed="false">
+          <span id="soundIcon" aria-hidden="true">◖))</span>
+        </button>
+      </header>
+
+      <section class="scoreboard" aria-label="Game status">
+        <div class="stat">
+          <span class="stat-label">Score</span>
+          <strong id="score">000000</strong>
+        </div>
+        <div class="stat stat-center">
+          <span class="stat-label">High score</span>
+          <strong id="highScore">000000</strong>
+        </div>
+        <div class="stat stat-right">
+          <span class="stat-label">Level</span>
+          <strong id="level">01</strong>
+        </div>
+      </section>
+
+      <section class="play-area">
+        <div class="canvas-frame">
+          <canvas id="gameCanvas" width="504" height="552" aria-label="Pacman game maze" role="img"></canvas>
+
+          <div class="overlay" id="startOverlay">
+            <div class="overlay-card">
+              <span class="mini-packman" aria-hidden="true"></span>
+              <p class="overlay-kicker">Choose your pilot</p>
+              <h2>Play it—or watch<br />AI decide.</h2>
+              <div class="start-actions">
+                <button class="primary-button" id="jevStartButton" type="button" disabled>Checking Jev…</button>
+                <button class="primary-button laya-button" id="layaStartButton" type="button" disabled>Checking Laya…</button>
+                <button class="secondary-button start-manual" id="startButton" type="button">Play manually</button>
+              </div>
+              <p class="overlay-hint" id="jevSetupHint">Checking the available AI pilots…</p>
+            </div>
+          </div>
+
+          <div class="overlay hidden" id="messageOverlay">
+            <div class="overlay-card compact">
+              <p class="overlay-kicker" id="messageKicker">Run over</p>
+              <h2 id="messageTitle">Great run!</h2>
+              <p id="messageScore" class="final-score">0 points</p>
+              <button class="primary-button" id="restartButton" type="button">Play again</button>
+            </div>
+          </div>
+        </div>
+
+        <aside class="side-panel">
+          <section class="panel-card jev-card" aria-label="AI decision inspector">
+            <div class="jev-heading">
+              <div>
+                <span class="panel-label" id="pilotLabel">AI pilot</span>
+                <strong id="jevDecision">STANDBY</strong>
+              </div>
+              <span class="status-pill checking" id="jevStatus"><span></span>Checking</span>
+            </div>
+            <p class="decision-caption" id="jevCaption">Choose Jev or Laya to watch it plan complete routes.</p>
+            <div class="decision-meta">
+              <span><small>Confidence</small><strong id="jevConfidence">—</strong></span>
+              <span><small>Latency</small><strong id="jevLatency">—</strong></span>
+              <span><small>Model</small><strong id="jevModel">—</strong></span>
+            </div>
+            <div class="probabilities" id="jevProbabilities" aria-label="Direction probabilities">
+              <p class="empty-decisions">Waiting for a decision.</p>
+            </div>
+            <div class="decision-history-wrap">
+              <span class="panel-label">Recent turns</span>
+              <ol class="decision-history" id="jevHistory"><li>No decisions yet</li></ol>
+            </div>
+            <button class="secondary-button" id="controlModeButton" type="button" disabled>Let AI drive</button>
+          </section>
+
+          <section class="panel-card">
+            <div class="panel-heading">
+              <span>Lives</span>
+              <div id="lives" class="lives" aria-label="3 lives"></div>
+            </div>
+            <div class="divider"></div>
+            <p class="tip"><span class="power-dot" aria-hidden="true"></span> Power dots turn the tables.</p>
+          </section>
+
+          <section class="panel-card controls-card">
+            <span class="panel-label">Controls</span>
+            <div class="key-grid" aria-hidden="true">
+              <span></span><kbd>↑</kbd><span></span>
+              <kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd>
+            </div>
+            <p>One tile per arrow or WASD press</p>
+            <button class="secondary-button" id="pauseButton" type="button">Pause <kbd>P</kbd></button>
+          </section>
+
+        </aside>
+      </section>
+
+      <section class="telemetry-shell" aria-labelledby="telemetryTitle">
+        <header class="telemetry-header">
+          <div>
+            <p class="eyebrow">Decision trace</p>
+            <h2 id="telemetryTitle">What the AI pilot sees and returns</h2>
+          </div>
+          <p id="jevActivity" class="telemetry-activity">Waiting for an AI pilot and the first decision checkpoint.</p>
+        </header>
+
+        <div class="decision-flow" aria-label="AI decision flow">
+          <span><b>1</b> Code scans the whole maze</span>
+          <i aria-hidden="true">→</i>
+          <span><b>2</b> The selected pilot chooses a route</span>
+          <i aria-hidden="true">→</i>
+          <span><b>3</b> The game validates and acts</span>
+        </div>
+
+        <div class="telemetry-grid">
+          <article class="telemetry-card">
+            <div class="telemetry-card-heading">
+              <h3>Whole-board state sent</h3>
+              <span>JSON</span>
+            </div>
+            <p class="telemetry-help">Every decision includes the full maze, remaining food, Pacman, every ghost's position and heading, lives, power timer, and computed route metrics. Score is intentionally excluded.</p>
+            <pre id="jevStatePayload">No AI pilot has received a tile state yet.</pre>
+          </article>
+
+          <article class="telemetry-card">
+            <div class="telemetry-card-heading">
+              <h3>Two-junction routes</h3>
+              <span>Choice</span>
+            </div>
+            <p class="telemetry-help">Code ranks every legal two-junction route for safety, food cleanup, and loop risk. The selected pilot receives the ordered summaries as typed Choice criteria.</p>
+            <ul class="candidate-details" id="jevCandidateDetails">
+              <li class="empty-candidate">Simulated routes and their risk summaries will appear here.</li>
+            </ul>
+          </article>
+
+          <article class="telemetry-card metrics-card">
+            <div class="telemetry-card-heading">
+              <h3>Run metrics</h3>
+              <span>Live</span>
+            </div>
+            <dl class="telemetry-metrics">
+              <div><dt>Requests</dt><dd id="jevRequestCount">0</dd></div>
+              <div><dt>AI responses</dt><dd id="jevResponseCount">0</dd></div>
+              <div><dt>Request errors</dt><dd id="jevErrorCount">0</dd></div>
+              <div><dt>Decision waits</dt><dd id="jevDecisionWaits">0</dd></div>
+              <div><dt>Dots / request</dt><dd id="jevDotsPerRequest">—</dd></div>
+              <div><dt>Score / request</dt><dd id="jevScorePerRequest">—</dd></div>
+              <div><dt>Deaths</dt><dd id="jevDeaths">0</dd></div>
+              <div><dt>Loop routes excluded</dt><dd id="jevLoopRoutesExcluded">0</dd></div>
+              <div><dt>Total tokens</dt><dd id="jevTokenCount">0</dd></div>
+              <div><dt>Average latency</dt><dd id="jevAverageLatency">—</dd></div>
+            </dl>
+            <p class="telemetry-help telemetry-note">Both pilots produce a typed decision and calibrated probabilities, not a hidden chain-of-thought explanation.</p>
+          </article>
+        </div>
+
+        <div class="log-card">
+          <div class="telemetry-card-heading">
+            <h3>Decision log</h3>
+            <span>Latest first</span>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>#</th><th>Cell</th><th>Trigger</th><th>Candidates</th><th>Chosen route</th><th>Confidence</th><th>Latency</th><th>Model</th></tr></thead>
+              <tbody id="jevDecisionLog"><tr><td colspan="8">No decisions yet.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="mobile-controls" aria-label="Touch controls">
+        <button data-direction="up" aria-label="Move up">↑</button>
+        <button data-direction="left" aria-label="Move left">←</button>
+        <button data-direction="down" aria-label="Move down">↓</button>
+        <button data-direction="right" aria-label="Move right">→</button>
+      </section>
+
+      <p id="announcement" class="sr-only" aria-live="polite"></p>
+    </main>
+    <script type="module" src="game.js"></script>
+  </body>
+</html>
+
