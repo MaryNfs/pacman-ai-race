@@ -1,0 +1,45 @@
+.header-links { display: flex; gap: 8px; }
+.benchmark-intro { align-items: center; }
+.benchmark-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+  gap: 10px;
+  min-width: min(620px, 100%);
+}
+.benchmark-form label { display: grid; gap: 5px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.benchmark-form input, .benchmark-form select {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--ink);
+  background: #0b1022;
+  font: inherit;
+}
+.benchmark-actions { display: flex; grid-column: 1 / -1; gap: 8px; justify-content: flex-end; }
+progress { display: block; width: 100%; height: 5px; margin: -8px 0 18px; accent-color: var(--cyan); }
+.benchmark-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(420px, .85fr); gap: 16px; align-items: start; }
+.benchmark-player iframe { height: 760px; }
+.benchmark-player .competitor-heading h2 { margin: 4px 0 0; font-size: 16px; color: var(--yellow); }
+.results-panel { display: grid; gap: 16px; }
+.results-panel section { padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+.results-panel h2 { margin: 5px 0 14px; }
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
+th, td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: right; }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+th { color: #9299b4; font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+td { color: #d7daea; }
+tbody tr:last-child td { border-bottom: 0; }
+
+@media (max-width: 1180px) {
+  .benchmark-grid { grid-template-columns: 1fr; }
+  .benchmark-form { min-width: 0; }
+}
+
+@media (max-width: 780px) {
+  .benchmark-intro { display: block; }
+  .benchmark-form { grid-template-columns: 1fr; margin-top: 18px; }
+  .benchmark-actions { grid-column: auto; justify-content: flex-start; }
+  .header-links { display: none; }
+}

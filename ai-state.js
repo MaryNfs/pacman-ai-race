@@ -1,7 +1,7 @@
-import { DIRECTIONS, LEVEL_MAP, OPPOSITE, availableDirections, cellKey, isWalkable, mazeRegion, nextCell } from "./game-core.js";
+import { DIRECTIONS, DOT_PAUSE_SECONDS, LEVEL_MAP, OPPOSITE, POWER_DOT_PAUSE_SECONDS, availableDirections, cellKey, isWalkable, mazeRegion, nextCell, pacmanSpeed } from "./game-core.js";
 import { enumerateRouteCandidates, filterSelectableRoutes } from "./route-planner.js";
 
-export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, lives = 3, recentTrail = [], playerSpeed = 6.35, planningLeadTime = 0 }) {
+export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, lives = 3, recentTrail = [], playerSpeed = pacmanSpeed(level, frightenedFor > 0), planningLeadTime = 0 }) {
   const options = availableDirections(player.row, player.col);
   const frightened = frightenedFor > 0;
 
@@ -37,6 +37,11 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
       game: "Pacman maze chase",
       objective: "Survive and clear every food dot.",
       mode: frightened ? "power mode: ghosts are edible" : "normal mode: ghosts are dangerous",
+      contactRules: {
+        dangerousGhosts: "Fatal on contact from any direction. Pacman must not chase, catch from behind, overtake, or pass through a dangerous ghost.",
+        edibleGhosts: "A ghost is edible only while powerModeSecondsRemaining stays above zero through contact; otherwise contact costs a life.",
+        movement: "Pacman has only a small open-corridor speed advantage and pauses briefly when eating dots, so route safety must not depend on outrunning a dangerous ghost.",
+      },
       progress: progressLabel(pellets.size + powerPellets.size),
       lives,
       currentHeading: player.direction,
@@ -137,7 +142,7 @@ export function buildMazeSnapshot(player, ghosts, pellets, powerPellets, frighte
   };
 }
 
-export function projectRouteState({ path, pellets, powerPellets, frightenedFor = 0, playerSpeed = 6.35 }) {
+export function projectRouteState({ path, pellets, powerPellets, frightenedFor = 0, playerSpeed = pacmanSpeed(1) }) {
   const projectedPellets = new Set(pellets);
   const projectedPowerPellets = new Set(powerPellets);
   let projectedFrightenedFor = frightenedFor;
@@ -145,8 +150,8 @@ export function projectRouteState({ path, pellets, powerPellets, frightenedFor =
   path.forEach((cell) => {
     projectedFrightenedFor = Math.max(0, projectedFrightenedFor - 1 / playerSpeed);
     const key = cellKey(cell.row, cell.col);
-    projectedPellets.delete(key);
-    if (projectedPowerPellets.delete(key)) projectedFrightenedFor = 8;
+    if (projectedPellets.delete(key)) projectedFrightenedFor = Math.max(0, projectedFrightenedFor - DOT_PAUSE_SECONDS);
+    if (projectedPowerPellets.delete(key)) projectedFrightenedFor = 8 - POWER_DOT_PAUSE_SECONDS;
   });
 
   return {
@@ -177,7 +182,7 @@ export function findNextJunction(player, initialDirection, rows = LEVEL_MAP) {
   return scanCorridor(player, initialDirection, rows).junction;
 }
 
-export function findCorridorThreat(player, initialDirection, ghosts, playerSpeed = 6.35, frightenedFor = 0, rows = LEVEL_MAP) {
+export function findCorridorThreat(player, initialDirection, ghosts, playerSpeed = pacmanSpeed(1), frightenedFor = 0, rows = LEVEL_MAP) {
   const scan = scanCorridor(player, initialDirection, rows);
   for (const checkpoint of scan.checkpoints) {
     const playerArrival = checkpoint.steps / playerSpeed;

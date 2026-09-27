@@ -35,6 +35,7 @@ body::before {
 }
 
 button, a { font: inherit; }
+.header-links { display: flex; gap: 8px; }
 
 .comparison-shell {
   position: relative;
@@ -158,6 +159,7 @@ footer { margin-top: 20px; color: #777f9c; font-size: 11px; text-align: center; 
   h1 { font-size: 22px; }
   .brand-mark { width: 34px; height: 34px; }
   .solo-link { padding: 8px 10px; font-size: 10px; }
+  .header-links { gap: 5px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

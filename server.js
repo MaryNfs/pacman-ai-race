@@ -19,6 +19,7 @@ createServer(async (request, response) => {
       configured: provider.configured,
       available: await provider.isAvailable(),
       model: provider.model,
+      models: provider.models,
       selfHosted: provider.selfHosted,
     }]));
     sendJson(response, 200, {

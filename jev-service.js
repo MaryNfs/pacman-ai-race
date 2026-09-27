@@ -3,6 +3,7 @@ export {
   DIRECTIONS,
   JEV_MODEL,
   LAYA_MODEL,
+  LAYA_MODELS,
   PROVIDER_IDS,
   createDecisionProvider,
   createDecisionProviders,

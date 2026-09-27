@@ -1,4 +1,7 @@
 export const TILE_SIZE = 24;
+export const SPEED_UNIT = 7;
+export const DOT_PAUSE_SECONDS = 1 / 60;
+export const POWER_DOT_PAUSE_SECONDS = 3 / 60;
 
 export const LEVEL_MAP = Object.freeze([
   "#####################",
@@ -34,6 +37,24 @@ export const DIRECTIONS = Object.freeze({
 });
 
 export const OPPOSITE = Object.freeze({ up: "down", down: "up", left: "right", right: "left" });
+
+export function pacmanSpeed(level = 1, frightened = false) {
+  if (level >= 21) return SPEED_UNIT * 0.9;
+  if (level >= 5) return SPEED_UNIT;
+  if (level >= 2) return SPEED_UNIT * (frightened ? 0.95 : 0.9);
+  return SPEED_UNIT * (frightened ? 0.9 : 0.8);
+}
+
+export function ghostSpeed(level = 1, frightened = false) {
+  if (frightened) {
+    if (level >= 5) return SPEED_UNIT * 0.6;
+    if (level >= 2) return SPEED_UNIT * 0.55;
+    return SPEED_UNIT * 0.5;
+  }
+  if (level >= 5) return SPEED_UNIT * 0.95;
+  if (level >= 2) return SPEED_UNIT * 0.85;
+  return SPEED_UNIT * 0.75;
+}
 
 export function parseLevel(rows = LEVEL_MAP) {
   const width = rows[0].length;

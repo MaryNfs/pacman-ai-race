@@ -10,15 +10,28 @@ import {
   nextCell,
   availableDirections,
   squaredDistance,
+  pacmanSpeed,
+  ghostSpeed,
+  DOT_PAUSE_SECONDS,
+  POWER_DOT_PAUSE_SECONDS,
 } from "./game-core.js";
 import { buildDecisionRequest, projectRouteState } from "./ai-state.js";
 
 const pageParams = new URLSearchParams(window.location.search);
 const comparisonEmbed = pageParams.get("embed") === "1";
+const benchmarkMode = pageParams.get("benchmark") === "1";
 const lockedProviderId = ["jev", "laya"].includes(pageParams.get("provider"))
   ? pageParams.get("provider")
   : null;
+const layaModelOverride = ["english", "multilingual", "typed-decisions"].includes(pageParams.get("model"))
+  ? pageParams.get("model")
+  : null;
+const initialRandomSeed = Number.isInteger(Number(pageParams.get("seed")))
+  ? Number(pageParams.get("seed")) >>> 0
+  : 0x51a7c0de;
+const simulationRate = benchmarkMode ? Math.min(8, Math.max(1, Number(pageParams.get("speed")) || 4)) : 1;
 if (comparisonEmbed) document.body.classList.add("comparison-embed");
+if (benchmarkMode) document.body.classList.add("benchmark-embed");
 
 const canvas = document.querySelector("#gameCanvas");
 const context = canvas.getContext("2d");
@@ -28,7 +41,7 @@ boardLayer.height = canvas.height;
 const boardContext = boardLayer.getContext("2d");
 const MAX_FRAME_DELTA = 0.25;
 const MAX_SIMULATION_STEP = 1 / 60;
-const RENDER_INTERVAL = comparisonEmbed ? 1000 / 30 : 0;
+const RENDER_INTERVAL = benchmarkMode ? 1000 / 12 : comparisonEmbed ? 1000 / 30 : 0;
 const elements = {
   score: document.querySelector("#score"),
   highScore: document.querySelector("#highScore"),
@@ -98,7 +111,7 @@ const state = {
   elapsedTime: 0,
   muted: comparisonEmbed,
   audio: null,
-  randomSeed: 0x51a7c0de,
+  randomSeed: initialRandomSeed,
   controlMode: "manual",
   manualQueue: [],
   trail: [],
@@ -106,7 +119,7 @@ const state = {
     providerId: "jev",
     providers: {
       jev: { id: "jev", name: "Jev", configured: false, available: false, model: "jev-latest", selfHosted: false },
-      laya: { id: "laya", name: "Laya", configured: false, available: false, model: "typed-decisions", selfHosted: true },
+      laya: { id: "laya", name: "Laya", configured: false, available: false, model: "english", selfHosted: true },
     },
     configured: false,
     model: null,
@@ -135,6 +148,7 @@ function makeEntity(position, direction, speed) {
     queuedDirection: direction,
     progress: 0,
     speed,
+    pauseFor: 0,
   };
 }
 
@@ -147,10 +161,10 @@ function resetActors() {
   state.ai.waitingForKey = null;
   state.ai.retryAt = 0;
   state.manualQueue = [];
-  state.player = makeEntity(parsed.player, "left", 6.35);
+  state.player = makeEntity(parsed.player, "left", pacmanSpeed(state.level));
   state.trail = [cellKey(parsed.player.row, parsed.player.col)];
   state.ghosts = parsed.ghosts.map((position, index) => ({
-    ...makeEntity(position, index === 0 ? "up" : index === 1 ? "left" : "right", 5.25 + state.level * 0.1),
+    ...makeEntity(position, index === 0 ? "up" : index === 1 ? "left" : "right", ghostSpeed(state.level)),
     ...ghostStyles[index % ghostStyles.length],
     home: { ...position },
   }));
@@ -162,7 +176,7 @@ function resetGame() {
   state.level = 1;
   state.lives = 3;
   state.elapsedTime = 0;
-  state.randomSeed = 0x51a7c0de;
+  state.randomSeed = initialRandomSeed;
   state.ai.history = [];
   state.ai.metrics = freshAiMetrics();
   state.ai.log = [];
@@ -195,6 +209,12 @@ function beginGame(controlMode = state.controlMode) {
 }
 
 function advanceLevel() {
+  if (benchmarkMode) {
+    state.score += 500;
+    updateHud();
+    endGame(true);
+    return;
+  }
   state.level += 1;
   state.score += 500;
   loadLevel();
@@ -223,15 +243,28 @@ function loseLife() {
   }, 700);
 }
 
-function endGame() {
+function endGame(completed = false) {
   state.status = "over";
-  elements.messageKicker.textContent = state.score >= state.highScore && state.score > 0 ? "New high score" : "Run over";
-  elements.messageTitle.textContent = state.score >= state.highScore && state.score > 0 ? "Maze legend!" : "Great run!";
+  elements.messageKicker.textContent = completed ? "Maze cleared" : state.score >= state.highScore && state.score > 0 ? "New high score" : "Run over";
+  elements.messageTitle.textContent = completed ? "Pilot wins!" : state.score >= state.highScore && state.score > 0 ? "Maze legend!" : "Great run!";
   elements.messageScore.textContent = `${state.score.toLocaleString()} points · level ${state.level}`;
   elements.messageOverlay.classList.remove("hidden");
   elements.restartButton.focus();
   announce(`Game over. Final score ${state.score}.`);
-  notifyComparisonParent("state", { status: "over", score: state.score, level: state.level });
+  notifyComparisonParent("state", {
+    status: "over",
+    score: state.score,
+    level: state.level,
+    completed,
+    deaths: state.ai.metrics.deaths,
+    dotsCollected: state.ai.metrics.dotsCollected,
+    remainingDots: state.pellets.size + state.powerPellets.size,
+    requests: state.ai.metrics.requests,
+    responses: state.ai.metrics.responses,
+    averageLatencyMs: state.ai.metrics.responses > 0 ? Math.round(state.ai.metrics.totalLatency / state.ai.metrics.responses) : null,
+    seed: initialRandomSeed,
+    model: state.ai.model,
+  });
 }
 
 function togglePause() {
@@ -251,6 +284,11 @@ function togglePause() {
 
 function updatePlayer(delta) {
   const player = state.player;
+  player.speed = pacmanSpeed(state.level, state.frightenedFor > 0);
+  if (player.pauseFor > 0) {
+    player.pauseFor = Math.max(0, player.pauseFor - delta);
+    return;
+  }
   if (player.progress === 0) {
     if (state.controlMode === "ai") {
       if (!chooseAiStep(player)) return;
@@ -418,7 +456,12 @@ async function requestAiDecision(decision, junctionKey, trigger) {
     const response = await fetch("/api/ai/decide", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: provider.id, state: decision.state, routeCandidates: decision.routeChoices }),
+      body: JSON.stringify({
+        provider: provider.id,
+        ...(provider.id === "laya" && layaModelOverride ? { model: layaModelOverride } : {}),
+        state: decision.state,
+        routeCandidates: decision.routeChoices,
+      }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.message || `${provider.name} request failed`);
@@ -442,11 +485,11 @@ async function requestAiDecision(decision, junctionKey, trigger) {
 
 function updateGhosts(delta) {
   for (const ghost of state.ghosts) {
+    ghost.speed = ghostSpeed(state.level, state.frightenedFor > 0);
     if (ghost.progress === 0) {
       ghost.direction = chooseGhostDirection(ghost);
       beginStep(ghost, ghost.direction, "ghost");
     }
-    ghost.speed = (5.15 + state.level * 0.12) * (state.frightenedFor > 0 ? 0.7 : 1);
     moveEntity(ghost, delta);
   }
 }
@@ -514,11 +557,13 @@ function collectAt(row, col) {
   if (state.pellets.delete(key)) {
     if (state.controlMode === "ai") state.ai.metrics.dotsCollected += 1;
     addScore(10);
+    state.player.pauseFor = Math.max(state.player.pauseFor, DOT_PAUSE_SECONDS);
     playTone(440 + (state.score % 80), 0.025, "square", 0.012);
   } else if (state.powerPellets.delete(key)) {
     if (state.controlMode === "ai") state.ai.metrics.dotsCollected += 1;
     addScore(50);
     state.frightenedFor = 8;
+    state.player.pauseFor = Math.max(state.player.pauseFor, POWER_DOT_PAUSE_SECONDS);
     playSequence([220, 330, 440], 0.055);
     announce("Power mode active.");
   }
@@ -566,7 +611,7 @@ function renderedPosition(entity) {
 }
 
 function gameLoop(now) {
-  let remainingDelta = Math.min(Math.max((now - state.lastTime) / 1000, 0), MAX_FRAME_DELTA);
+  let remainingDelta = Math.min(Math.max((now - state.lastTime) / 1000, 0) * simulationRate, MAX_FRAME_DELTA);
   state.lastTime = now;
 
   while (state.status === "playing" && remainingDelta > 0) {
@@ -584,6 +629,7 @@ function gameLoop(now) {
 
 function updateSimulation(delta) {
   updatePlayer(delta);
+  if (state.status !== "playing") return;
   if (!isWaitingForAi()) {
     state.elapsedTime += delta;
     state.frightenedFor = Math.max(0, state.frightenedFor - delta);
@@ -767,6 +813,7 @@ function setControlMode(mode) {
 
 function showAiDecision(result, decision) {
   const provider = activeProvider();
+  state.ai.model = result.model || state.ai.model;
   state.ai.metrics.responses += 1;
   state.ai.metrics.inputTokens += Number(result.usage?.input_tokens) || 0;
   state.ai.metrics.outputTokens += Number(result.usage?.output_tokens) || 0;
@@ -1029,6 +1076,7 @@ async function checkAiStatus() {
     const laya = state.ai.providers.laya;
     if (comparisonEmbed && lockedProviderId) {
       const provider = state.ai.providers[lockedProviderId];
+      if (lockedProviderId === "laya" && layaModelOverride) provider.model = layaModelOverride;
       if (provider.available) selectAiProvider(lockedProviderId);
       else {
         state.ai.configured = false;

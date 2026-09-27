@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createDecisionProvider, createJevService, validateDecisionPayload } from "../ai-service.js";
+import { LEVEL_MAP } from "../game-core.js";
+import { prepareLayaDecision } from "../providers/laya-provider.js";
 
 const validPayload = {
   state: { mode: "normal", routeCandidates: { left_then_up: "safe", right_then_down: "danger" } },
@@ -93,6 +95,78 @@ test("self-hosted Laya uses the shared typed-decision contract", async () => {
   assert.deepEqual(result.directions, ["right", "down"]);
   assert.equal(calls[0].model, "typed-decisions");
   assert.deepEqual(Object.keys(calls[0].questions.route.criteria), ["left_then_up", "right_then_down"]);
+  assert.notDeepEqual(calls[0].state, validPayload.state);
+});
+
+test("Laya alone receives a compact full-maze state and short route criteria", () => {
+  const payload = {
+    state: {
+      mode: "normal mode: ghosts are dangerous",
+      lives: 3,
+      currentHeading: "left",
+      plannedDecisionPosition: { row: 15, col: 10 },
+      powerModeSecondsRemaining: 0,
+      forecast: { planStartsInSeconds: 0.5 },
+      wholeMazeSnapshot: {
+        remainingRegularDots: 100,
+        remainingPowerDots: 4,
+        mapTopToBottom: ["#####", "#P.A#", "#####"],
+        ghosts: [{ marker: "A", position: { row: 1, col: 3 }, heading: "left", state: "dangerous" }],
+      },
+      routeCandidates: {
+        left_then_up: {
+          codeStrategicRank: 1,
+          nearestGhostLeadSeconds: 2.4,
+          ghostTiming: "safe from active-ghost timing",
+          foodDots: 2,
+          powerPellets: 0,
+          estimatedTravelTilesToNextDot: 1,
+          destinationExitCount: 2,
+          immediateReverse: false,
+          recentPathTiles: 0,
+        },
+      },
+      verboseJevOnlyField: "x".repeat(2_000),
+    },
+    routeCandidates: [validPayload.routeCandidates[0]],
+  };
+
+  const prepared = prepareLayaDecision(payload);
+  assert.equal(prepared.state.maze, "#####\n#P.A#\n#####");
+  assert.match(prepared.state.fatalRule, /behind/);
+  assert.equal("verboseJevOnlyField" in prepared.state, false);
+  assert.ok(JSON.stringify(prepared.state).length < 1_000);
+  assert.ok(prepared.criteria.left_then_up.length < 180);
+
+  const fullMazePrepared = prepareLayaDecision({
+    ...payload,
+    state: {
+      ...payload.state,
+      wholeMazeSnapshot: { ...payload.state.wholeMazeSnapshot, mapTopToBottom: LEVEL_MAP },
+    },
+  });
+  assert.ok(JSON.stringify(fullMazePrepared.state).length < 1_200);
+});
+
+test("Laya supports explicit checkpoint comparison without changing Jev", async () => {
+  const models = [];
+  const service = createDecisionProvider({
+    id: "laya",
+    model: "english",
+    client: {
+      async systemOne(request) {
+        models.push(request.model);
+        return {
+          model: request.model,
+          answers: { route: { choice: "left_then_up", confidence: 1, probabilities: { left_then_up: 1, right_then_down: 0 } } },
+          usage: { input_tokens: 1, output_tokens: 1 },
+        };
+      },
+    },
+  });
+  await service.decide({ ...validPayload, model: "multilingual" });
+  assert.deepEqual(models, ["multilingual"]);
+  await assert.rejects(service.decide({ ...validPayload, model: "unknown" }), /Unsupported Laya model/);
 });
 
 test("Laya stays disabled until a self-hosted URL or client is supplied", async () => {

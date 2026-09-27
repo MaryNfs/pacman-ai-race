@@ -136,10 +136,10 @@
         <div class="telemetry-grid">
           <article class="telemetry-card">
             <div class="telemetry-card-heading">
-              <h3>Whole-board state sent</h3>
+              <h3>Whole-board planning state</h3>
               <span>JSON</span>
             </div>
-            <p class="telemetry-help">Every decision includes the full maze, remaining food, Pacman, every ghost's position and heading, lives, power timer, and computed route metrics. Score is intentionally excluded.</p>
+            <p class="telemetry-help">Every decision includes the full maze and live positions. Jev receives the rich route state; Laya receives a shorter equivalent map and compact route metrics that fit its smaller context. Score is intentionally excluded.</p>
             <pre id="jevStatePayload">No AI pilot has received a tile state yet.</pre>
           </article>
 
@@ -148,7 +148,7 @@
               <h3>Two-junction routes</h3>
               <span>Choice</span>
             </div>
-            <p class="telemetry-help">Code ranks every legal two-junction route for safety, food cleanup, and loop risk. The selected pilot receives the ordered summaries as typed Choice criteria.</p>
+            <p class="telemetry-help">Code ranks every legal two-junction route for safety, food cleanup, and loop risk. Jev receives the detailed summaries; Laya receives checkpoint-friendly abbreviated criteria.</p>
             <ul class="candidate-details" id="jevCandidateDetails">
               <li class="empty-candidate">Simulated routes and their risk summaries will appear here.</li>
             </ul>
@@ -201,4 +201,3 @@
     <script type="module" src="game.js"></script>
   </body>
 </html>
-

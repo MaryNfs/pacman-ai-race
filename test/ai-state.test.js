@@ -79,7 +79,7 @@ test("route projection removes collected food and activates power mode", () => {
 
   assert.deepEqual([...projection.pellets], ["2,1"]);
   assert.deepEqual([...projection.powerPellets], ["3,1"]);
-  assert.equal(projection.frightenedFor, 7.8);
+  assert.ok(Math.abs(projection.frightenedFor - 7.7333) < 0.001);
 });
 
 test("nearest distance is calculated in code around maze walls", () => {

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080b18" />
+    <meta name="description" content="Compare Jev with every Laya checkpoint over the same deterministic Pacman seeds." />
+    <title>Pacman AI Benchmark — Jev vs Laya checkpoints</title>
+    <link rel="stylesheet" href="comparison.css" />
+    <link rel="stylesheet" href="benchmark.css" />
+  </head>
+  <body>
+    <main class="comparison-shell benchmark-shell">
+      <header class="comparison-header">
+        <div class="brand" aria-label="Pacman AI Benchmark">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <p class="eyebrow">Seeded decision lab</p>
+            <h1>PACMAN <span>MODEL BENCHMARK</span></h1>
+          </div>
+        </div>
+        <nav class="header-links" aria-label="Game views">
+          <a class="solo-link" href="index.html">Live race</a>
+          <a class="solo-link" href="pilot.html">Solo mode</a>
+        </nav>
+      </header>
+
+      <section class="race-intro benchmark-intro" aria-labelledby="benchmarkTitle">
+        <div>
+          <p class="eyebrow">Same maps · one run at a time</p>
+          <h2 id="benchmarkTitle">Compare every Laya checkpoint fairly.</h2>
+          <p>Jev, Laya English, Laya Multilingual, and Laya Typed Decisions replay the same deterministic seeds. Runs are sequential so two games never compete for browser or model resources.</p>
+        </div>
+        <form class="benchmark-form" id="benchmarkForm">
+          <label>Seeds per pilot <input id="runCount" type="number" min="1" max="10" value="3" /></label>
+          <label>Base seed <input id="baseSeed" type="number" min="0" max="4294967295" value="137" /></label>
+          <label>Simulation speed <select id="simulationSpeed"><option value="2">2×</option><option value="4" selected>4×</option><option value="6">6×</option><option value="8">8×</option></select></label>
+          <div class="benchmark-actions">
+            <button class="primary-button" id="startBenchmark" type="submit" disabled>Checking pilots…</button>
+            <button class="secondary-button" id="stopBenchmark" type="button" disabled>Stop</button>
+          </div>
+        </form>
+      </section>
+
+      <p class="race-status" id="benchmarkStatus" aria-live="polite">Checking Jev and Laya readiness…</p>
+      <progress id="benchmarkProgress" max="1" value="0" aria-label="Benchmark progress"></progress>
+
+      <section class="benchmark-grid">
+        <article class="competitor benchmark-player">
+          <header class="competitor-heading">
+            <div><p class="eyebrow">Current seeded run</p><h2 id="currentRun">No active run.</h2></div>
+          </header>
+          <iframe id="benchmarkFrame" title="Current Pacman benchmark run" src="about:blank"></iframe>
+        </article>
+
+        <aside class="results-panel">
+          <section>
+            <p class="eyebrow">Paired outcome</p>
+            <h2>Summary</h2>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Pilot</th><th>Checkpoint</th><th>Runs</th><th>Clears</th><th>Avg score</th><th>vs Jev</th><th>Avg dots</th><th>Avg deaths</th><th>Latency</th></tr></thead>
+                <tbody id="summaryBody"><tr><td colspan="9">Start a comparison to collect results.</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+          <section>
+            <p class="eyebrow">Every attempt</p>
+            <h2>Run log</h2>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>#</th><th>Pilot</th><th>Seed</th><th>Result</th><th>Score</th><th>Dots</th><th>Deaths</th><th>Latency</th></tr></thead>
+                <tbody id="runBody"><tr><td colspan="8">No completed runs yet.</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <footer>“vs Jev” is the mean score difference on exactly matched seeds. A maze clear ends a run; otherwise it ends after all three lives.</footer>
+    </main>
+    <script type="module" src="benchmark.js"></script>
+  </body>
+</html>

@@ -18,6 +18,8 @@ npm start
 
 Then open [http://localhost:4173](http://localhost:4173) for the side-by-side race. Solo and manual play remain available at [http://localhost:4173/pilot.html](http://localhost:4173/pilot.html).
 
+For repeatable model comparison, open [http://localhost:4173/benchmark.html](http://localhost:4173/benchmark.html). It runs Jev and all three Laya checkpoints sequentially over the same seeds and reports score, clears, dots, deaths, latency, and each Laya checkpoint's paired score difference from Jev.
+
 ## Side-by-side comparison
 
 - Jev runs on the left and Laya runs on the right.
@@ -51,7 +53,7 @@ Laya requires Python 3.10 or newer. In a second terminal, create an isolated env
 ```sh
 python3 -m venv .laya-venv
 .laya-venv/bin/python -m pip install "laya[serve]"
-LAYA_HOST=127.0.0.1 LAYA_MODELS=typed-decisions .laya-venv/bin/laya-serve
+LAYA_HOST=127.0.0.1 LAYA_MODELS=english,multilingual,typed-decisions .laya-venv/bin/laya-serve
 ```
 
 The first launch downloads the model weights. Leave that server running, then start Pacman in the original terminal:
@@ -60,7 +62,7 @@ The first launch downloads the model weights. Leave that server running, then st
 LAYA_BASE_URL="http://127.0.0.1:8000" npm start
 ```
 
-Laya uses the `typed-decisions` checkpoint by default. Override it with `LAYA_MODEL`. If you secure Laya with `LAYA_API_KEY`, pass the same value to the Pacman server. The browser never receives the URL or key.
+Laya uses the `english` checkpoint by default because this game is an English route-choice task. Override it with `LAYA_MODEL`. The benchmark explicitly tests `english`, `multilingual`, and `typed-decisions`; preloading all three avoids a cold model load between runs, but requires enough memory to keep them resident. If you secure Laya with `LAYA_API_KEY`, pass the same value to the Pacman server. The browser never receives the URL or key.
 
 To enable both choices at once:
 
@@ -73,6 +75,9 @@ Laya is not bundled into the Node process: it remains a separate, self-hosted se
 ## How the AI pilots drive
 
 - Before every decision, code builds a fresh whole-board snapshot containing the full maze, every remaining dot, Pacman's planned position and heading, every ghost's position and heading, lives, power timer, and recent path. The score stays in the UI and is not sent to the model because it does not change the best route.
+- Jev receives that rich state unchanged. Laya alone receives a compact adapter with the same full maze, live actors, power timer, remaining-dot counts, and shorter route criteria so the request fits its smaller checkpoint contexts.
+- A normal ghost is fatal from every direction, including when Pacman catches it from behind. Both provider prompts say this explicitly; only a still-frightened ghost is edible.
+- Level-one movement follows the arcade-style ratio: Pacman moves at 80% base speed and normal ghosts at 75%, but Pacman pauses briefly for every dot and longer for a power dot. That means a small empty-corridor advantage exists, but ordinary dot eating usually makes Pacman slower overall and never makes dangerous contact safe.
 - Code then ranks every legal route across the next two junctions using ghost timing, local-area cleanup, distance to future food, escape options, and recent-path overlap.
 - Before each planned route begins, the local server sends compact structured route summaries and one typed `choice` question through the official `@typesafe-ai/sdk`.
 - The selected provider receives routes beginning with every walkable direction at that junction, including reverse/U-turn options. The state also lists blocked directions explicitly so the omission is never ambiguous.
@@ -101,4 +106,4 @@ After installing dependencies, run all checks with:
 npm run check
 ```
 
-The game is built with semantic HTML, modern CSS, Canvas, JavaScript modules, and TypeSafe AI's official SDK. Laya exposes the Jev-compatible wire protocol, so both providers share one validated server path. Core maze rules, two-junction route simulation, decision-state preparation, server validation, and response handling are tested independently of the browser. Tests use fake clients and never spend API credits or load local model weights.
+The game is built with semantic HTML, modern CSS, Canvas, JavaScript modules, and TypeSafe AI's official SDK. Jev and Laya have separate provider adapters, while sharing only payload validation and response normalization. Core maze rules, two-junction route simulation, decision-state preparation, benchmark aggregation, server validation, and response handling are tested independently of the browser. Tests use fake clients and never spend API credits or load local model weights.

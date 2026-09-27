@@ -272,6 +272,8 @@ body.comparison-embed::before { display: none; }
 .comparison-embed .overlay-card .start-actions { display: none; }
 .comparison-embed .overlay h2 { margin-bottom: 12px; font-size: clamp(25px, 5vw, 36px); }
 .comparison-embed .overlay-hint { max-width: 320px; margin: 0 auto; }
+.benchmark-embed .telemetry-shell { display: none; }
+.benchmark-embed .game-shell { padding-bottom: 12px; }
 
 @media (max-width: 540px) {
   .comparison-embed .side-panel { grid-template-columns: 1fr; }

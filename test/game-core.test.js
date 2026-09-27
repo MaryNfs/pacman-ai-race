@@ -1,11 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  DOT_PAUSE_SECONDS,
   LEVEL_MAP,
+  POWER_DOT_PAUSE_SECONDS,
   availableDirections,
   cellKey,
+  ghostSpeed,
   isWalkable,
   nextCell,
+  pacmanSpeed,
   parseLevel,
   squaredDistance,
 } from "../game-core.js";
@@ -60,6 +64,16 @@ test("every collectible is reachable from the player start", () => {
 
 test("distance helper uses squared Euclidean distance", () => {
   assert.equal(squaredDistance({ row: 1, col: 2 }, { row: 4, col: 6 }), 25);
+});
+
+test("arcade-style movement keeps Pacman only slightly faster before dot pauses", () => {
+  assert.ok(Math.abs(pacmanSpeed(1) - 5.6) < 1e-12);
+  assert.equal(ghostSpeed(1), 5.25);
+  assert.ok(pacmanSpeed(1) / ghostSpeed(1) < 1.07);
+  assert.equal(pacmanSpeed(1, true), 6.3);
+  assert.equal(ghostSpeed(1, true), 3.5);
+  assert.equal(DOT_PAUSE_SECONDS, 1 / 60);
+  assert.equal(POWER_DOT_PAUSE_SECONDS, 3 / 60);
 });
 
 test("invalid uneven mazes are rejected", () => {
