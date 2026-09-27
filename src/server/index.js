@@ -1,16 +1,25 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDecisionProviders, PROVIDER_IDS } from "./ai-service.js";
 
-const root = fileURLToPath(new URL(".", import.meta.url));
+const publicRoot = fileURLToPath(new URL("../../public/", import.meta.url));
+const sourceRoot = fileURLToPath(new URL("../", import.meta.url));
+const assetRoots = [
+  { prefix: "/assets/client/", root: resolve(sourceRoot, "client") },
+  { prefix: "/assets/shared/", root: resolve(sourceRoot, "shared") },
+];
 const port = Number(process.env.PORT) || 4173;
-const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8" };
+const contentTypes = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+};
 const providers = createDecisionProviders();
 
 createServer(async (request, response) => {
-  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+  const pathname = new URL(request.url, "http://localhost").pathname;
 
   if (request.method === "GET" && pathname === "/api/ai/status") {
     const statuses = await Promise.all(Object.entries(providers).map(async ([id, provider]) => [id, {
@@ -65,18 +74,20 @@ createServer(async (request, response) => {
     return;
   }
 
-  const requested = pathname === "/" ? "index.html" : pathname.slice(1);
-  const filePath = normalize(join(root, requested));
-
-  if (!filePath.startsWith(root)) {
+  const filePath = resolveStaticFile(pathname);
+  if (!filePath) {
     response.writeHead(403).end("Forbidden");
     return;
   }
 
   try {
     const content = await readFile(filePath);
-    response.writeHead(200, { "Content-Type": types[extname(filePath)] || "application/octet-stream", "Cache-Control": "no-store" });
-    response.end(content);
+    response.writeHead(200, {
+      "Content-Type": contentTypes[extname(filePath)] || "application/octet-stream",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    response.end(request.method === "HEAD" ? undefined : content);
   } catch {
     response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" }).end("Not found");
   }
@@ -85,6 +96,43 @@ createServer(async (request, response) => {
   console.log(`Jev pilot: ${providers.jev.configured ? `ready (${providers.jev.model})` : "not configured — set TYPESAFE_API_KEY"}`);
   console.log(`Laya pilot: ${providers.laya.configured ? `configured (${providers.laya.model}); readiness is checked at /api/ai/status` : "not configured — set LAYA_BASE_URL"}`);
 });
+
+function resolveStaticFile(pathname) {
+  if (pathname === "/") {
+    return resolve(publicRoot, "index.html");
+  }
+
+  const asset = assetRoots.find(({ prefix }) => pathname.startsWith(prefix));
+  if (asset) {
+    return resolveWithin(asset.root, pathname.slice(asset.prefix.length));
+  }
+
+  if (pathname.startsWith("/assets/")) {
+    return null;
+  }
+
+  return resolveWithin(publicRoot, pathname.slice(1));
+}
+
+function resolveWithin(root, requestedPath) {
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(requestedPath);
+  } catch {
+    return null;
+  }
+
+  if (!decodedPath || decodedPath.includes("\0")) {
+    return null;
+  }
+
+  const filePath = resolve(root, decodedPath);
+  const pathFromRoot = relative(root, filePath);
+  if (pathFromRoot.startsWith("..") || isAbsolute(pathFromRoot)) {
+    return null;
+  }
+  return filePath;
+}
 
 async function readJson(request) {
   const chunks = [];

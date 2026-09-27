@@ -5,10 +5,12 @@
   "type": "module",
   "description": "A side-by-side Pacman decision race between hosted Jev and self-hosted Laya.",
   "scripts": {
-    "start": "node server.js",
+    "start": "node --env-file=.env src/server/index.js",
     "test": "node --test",
-    "benchmark:offline": "node offline-benchmark.js",
-    "check": "node --check comparison.js && node --check benchmark.js && node --check benchmark-summary.js && node --check offline-benchmark.js && node --check game.js && node --check game-core.js && node --check route-planner.js && node --check ai-state.js && node --check ai-service.js && node --check providers/provider-utils.js && node --check providers/jev-provider.js && node --check providers/laya-provider.js && node --check jev-service.js && node --check server.js && npm test"
+    "test:watch": "node --test --watch",
+    "benchmark:offline": "node src/tools/offline-benchmark.js",
+    "check:syntax": "node --check src/client/comparison.js && node --check src/client/benchmark.js && node --check src/client/game.js && node --check src/shared/benchmark-summary.js && node --check src/shared/game-core.js && node --check src/shared/route-planner.js && node --check src/shared/ai-state.js && node --check src/server/ai-service.js && node --check src/server/providers/provider-utils.js && node --check src/server/providers/jev-provider.js && node --check src/server/providers/laya-provider.js && node --check src/server/index.js && node --check src/tools/offline-benchmark.js",
+    "check": "npm run check:syntax && npm test"
   },
   "engines": {
     "node": ">=20"

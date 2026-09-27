@@ -108,6 +108,22 @@ After installing dependencies, run all checks with:
 npm run check
 ```
 
+Use `npm test` for a single test run or `npm run test:watch` while developing. The repository is organized by runtime boundary:
+
+```text
+public/                 Browser entry pages and styles
+  styles/               Page-specific CSS
+src/
+  client/               Browser controllers and UI behavior
+  shared/               Game, planning, and reporting modules shared by runtimes
+  server/               HTTP/API entry point and AI provider adapters
+    providers/          Jev/Laya integrations and provider validation
+  tools/                Developer utilities and offline benchmarks
+test/                   Node test suite
+```
+
+Only `public/`, `src/client/`, and `src/shared/` are served to the browser. Server modules, environment files, tests, and package metadata remain outside the web root.
+
 Run the fixed-seed, two-level, active-ghost benchmark without provider credentials with `npm run benchmark:offline`. It reports highest level, clears, deaths, dots, decisions, forecast mismatches, search time, and forced-danger states for both a legacy-style immediate-food policy and the safety-first rank-one policy. Simulation advances in fixed time steps and never uses wall-clock timing for game state.
 
 The game is built with semantic HTML, modern CSS, Canvas, JavaScript modules, and TypeSafe AI's official SDK. Jev and Laya have separate provider adapters, while sharing only payload validation and response normalization. Core maze rules, next-junction route simulation, decision-state preparation, benchmark aggregation, server validation, and response handling are tested independently of the browser. Tests use fake clients and never spend API credits or load local model weights.

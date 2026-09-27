@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { benchmarkSeeds, summarizeBenchmark } from "../benchmark-summary.js";
+import { benchmarkSeeds, summarizeBenchmark } from "../src/shared/benchmark-summary.js";
 
 test("benchmark seeds are deterministic and distinct", () => {
   assert.deepEqual(benchmarkSeeds(137, 3), [137, 2654435906, 1013904379]);

@@ -20,7 +20,7 @@ import {
   makeActor,
   simulatePath,
   SIMULATION_STEP_SECONDS,
-} from "../game-core.js";
+} from "../src/shared/game-core.js";
 
 test("maze is rectangular and contains all required actors", () => {
   const parsed = parseLevel();

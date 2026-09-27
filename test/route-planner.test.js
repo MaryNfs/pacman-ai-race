@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chooseRouteFallback, enumerateRouteCandidates, filterSelectableRoutes, selectFoodTarget, traceCorridor } from "../route-planner.js";
-import { parseLevel } from "../game-core.js";
+import { chooseRouteFallback, enumerateRouteCandidates, filterSelectableRoutes, selectFoodTarget, traceCorridor } from "../src/shared/route-planner.js";
+import { parseLevel } from "../src/shared/game-core.js";
 
 test("route planner enumerates one next-junction plan for every legal move", () => {
   const level = parseLevel();

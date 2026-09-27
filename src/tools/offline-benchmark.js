@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
-import { cellKey, createSimulationState, parseLevel, simulatePath } from "./game-core.js";
-import { enumerateRouteCandidates, filterSelectableRoutes, selectFoodTarget } from "./route-planner.js";
+import { cellKey, createSimulationState, parseLevel, simulatePath } from "../shared/game-core.js";
+import { enumerateRouteCandidates, filterSelectableRoutes, selectFoodTarget } from "../shared/route-planner.js";
 
 export const SAFETY_BENCHMARK_SEEDS = Object.freeze([137, 2_654_435_906, 1_013_904_379]);
 const GHOSTS = Object.freeze([

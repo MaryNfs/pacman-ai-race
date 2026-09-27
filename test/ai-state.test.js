@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDecisionRequest, buildMazeSnapshot, findCorridorThreat, findNextJunction, nearestDistance, projectRouteState, selectablePrefetchedRoute } from "../ai-state.js";
-import { cellKey, parseLevel } from "../game-core.js";
+import { buildDecisionRequest, buildMazeSnapshot, findCorridorThreat, findNextJunction, nearestDistance, projectRouteState, selectablePrefetchedRoute } from "../src/shared/ai-state.js";
+import { cellKey, parseLevel } from "../src/shared/game-core.js";
 
 test("decision state evaluates every legal choice and exposes only collision-free candidates", () => {
   const level = parseLevel();

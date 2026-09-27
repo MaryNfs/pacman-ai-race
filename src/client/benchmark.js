@@ -1,4 +1,4 @@
-import { benchmarkSeeds, summarizeBenchmark } from "./benchmark-summary.js";
+import { benchmarkSeeds, summarizeBenchmark } from "../shared/benchmark-summary.js";
 
 const LAYA_MODELS = ["english", "multilingual", "typed-decisions"];
 const elements = {

@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDecisionRequest } from "../ai-state.js";
-import { OPPOSITE, availableDirections, createSimulationState, simulatePath, cellKey, nextCell, parseLevel } from "../game-core.js";
-import { enumerateRouteCandidates, filterSelectableRoutes, selectFoodTarget } from "../route-planner.js";
+import { buildDecisionRequest } from "../src/shared/ai-state.js";
+import { OPPOSITE, availableDirections, createSimulationState, simulatePath, cellKey, nextCell, parseLevel } from "../src/shared/game-core.js";
+import { enumerateRouteCandidates, filterSelectableRoutes, selectFoodTarget } from "../src/shared/route-planner.js";
 
 test("rank-one food strategy clears the maze without cycling", () => {
   const level = parseLevel();

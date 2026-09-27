@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createDecisionProvider, createJevService, validateDecisionPayload } from "../ai-service.js";
-import { LEVEL_MAP } from "../game-core.js";
-import { prepareLayaDecision } from "../providers/laya-provider.js";
+import { createDecisionProvider, createJevService, validateDecisionPayload } from "../src/server/ai-service.js";
+import { LEVEL_MAP } from "../src/shared/game-core.js";
+import { prepareLayaDecision } from "../src/server/providers/laya-provider.js";
 
 const validPayload = {
   state: { mode: "normal", routeCandidates: { left_then_up: "safe", right_then_down: "danger" } },

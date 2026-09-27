@@ -24,8 +24,8 @@ import {
   nextSeededRandom,
   createSimulationState,
   simulatePath,
-} from "./game-core.js";
-import { buildDecisionRequest, selectablePrefetchedRoute } from "./ai-state.js";
+} from "../shared/game-core.js";
+import { buildDecisionRequest, selectablePrefetchedRoute } from "../shared/ai-state.js";
 
 const pageParams = new URLSearchParams(window.location.search);
 const comparisonEmbed = pageParams.get("embed") === "1";
