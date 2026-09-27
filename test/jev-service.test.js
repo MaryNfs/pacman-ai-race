@@ -57,6 +57,7 @@ test("Jev service returns the typed choice and decision metadata", async () => {
   assert.equal(result.provider, "jev");
   assert.equal(result.providerName, "Jev");
   assert.equal(calls.length, 1);
+  assert.strictEqual(calls[0].state, validPayload.state);
   assert.deepEqual(Object.keys(calls[0].questions.route.criteria), ["left_then_up", "right_then_down"]);
 });
 

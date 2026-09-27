@@ -14,8 +14,18 @@ import {
   ghostSpeed,
   DOT_PAUSE_SECONDS,
   POWER_DOT_PAUSE_SECONDS,
+  POWER_MODE_SECONDS,
+  COLLISION_RADIUS,
+  makeActor,
+  beginActorStep,
+  advanceActor,
+  actorPosition,
+  chooseGhostDirection as chooseGhostDirectionCore,
+  nextSeededRandom,
+  createSimulationState,
+  simulatePath,
 } from "./game-core.js";
-import { buildDecisionRequest, projectRouteState } from "./ai-state.js";
+import { buildDecisionRequest } from "./ai-state.js";
 
 const pageParams = new URLSearchParams(window.location.search);
 const comparisonEmbed = pageParams.get("embed") === "1";
@@ -30,6 +40,7 @@ const initialRandomSeed = Number.isInteger(Number(pageParams.get("seed")))
   ? Number(pageParams.get("seed")) >>> 0
   : 0x51a7c0de;
 const simulationRate = benchmarkMode ? Math.min(8, Math.max(1, Number(pageParams.get("speed")) || 4)) : 1;
+const benchmarkLevelGoal = benchmarkMode ? Math.min(5, Math.max(1, Math.round(Number(pageParams.get("levels")) || 1))) : 1;
 if (comparisonEmbed) document.body.classList.add("comparison-embed");
 if (benchmarkMode) document.body.classList.add("benchmark-embed");
 
@@ -129,27 +140,18 @@ const state = {
     activePath: [],
     waitingForKey: null,
     retryAt: 0,
+    foodTargetKey: null,
     requestId: 0,
     history: [],
     metrics: freshAiMetrics(),
     log: [],
+    lastSelection: null,
+    lastDeathDiagnostic: null,
   },
 };
 
 function makeEntity(position, direction, speed) {
-  return {
-    row: position.row,
-    col: position.col,
-    fromRow: position.row,
-    fromCol: position.col,
-    toRow: position.row,
-    toCol: position.col,
-    direction,
-    queuedDirection: direction,
-    progress: 0,
-    speed,
-    pauseFor: 0,
-  };
+  return makeActor(position, direction, speed);
 }
 
 function resetActors() {
@@ -177,9 +179,12 @@ function resetGame() {
   state.lives = 3;
   state.elapsedTime = 0;
   state.randomSeed = initialRandomSeed;
+  state.ai.foodTargetKey = null;
   state.ai.history = [];
   state.ai.metrics = freshAiMetrics();
   state.ai.log = [];
+  state.ai.lastSelection = null;
+  state.ai.lastDeathDiagnostic = null;
   resetDecisionDisplay();
   resetTelemetryDisplay();
   loadLevel();
@@ -187,6 +192,7 @@ function resetGame() {
 }
 
 function loadLevel() {
+  state.ai.foodTargetKey = null;
   state.pellets = new Set(parsed.pellets);
   state.powerPellets = new Set(parsed.powerPellets);
   resetActors();
@@ -209,7 +215,7 @@ function beginGame(controlMode = state.controlMode) {
 }
 
 function advanceLevel() {
-  if (benchmarkMode) {
+  if (benchmarkMode && state.level >= benchmarkLevelGoal) {
     state.score += 500;
     updateHud();
     endGame(true);
@@ -232,6 +238,7 @@ function loseLife() {
     endGame();
     return;
   }
+  state.ai.foodTargetKey = null;
   resetActors();
   state.status = "countdown";
   window.setTimeout(() => {
@@ -255,6 +262,7 @@ function endGame(completed = false) {
     status: "over",
     score: state.score,
     level: state.level,
+    levelsCleared: completed ? state.level : Math.max(0, state.level - 1),
     completed,
     deaths: state.ai.metrics.deaths,
     dotsCollected: state.ai.metrics.dotsCollected,
@@ -262,6 +270,11 @@ function endGame(completed = false) {
     requests: state.ai.metrics.requests,
     responses: state.ai.metrics.responses,
     averageLatencyMs: state.ai.metrics.responses > 0 ? Math.round(state.ai.metrics.totalLatency / state.ai.metrics.responses) : null,
+    predictedSafeDeaths: state.ai.metrics.predictedSafeDeaths,
+    forcedDangerStates: state.ai.metrics.forcedDangerStates,
+    averageSearchTimeMs: state.ai.metrics.requests > 0 ? state.ai.metrics.totalSearchTimeMs / state.ai.metrics.requests : 0,
+    maximumSearchTimeMs: state.ai.metrics.maximumSearchTimeMs,
+    lastDeathDiagnostic: state.ai.lastDeathDiagnostic,
     seed: initialRandomSeed,
     model: state.ai.model,
   });
@@ -316,7 +329,14 @@ function chooseAiStep(player) {
   if (state.ai.activePath.length > 0) return startNextPlannedStep(player);
 
   if (state.ai.decisionReady?.junctionKey === checkpointKey) {
+    if (state.ai.decisionReady.expectedStateKey && state.ai.decisionReady.expectedStateKey !== decisionStateKey()) {
+      state.ai.decisionReady = null;
+      state.ai.waitingForKey = null;
+      state.ai.metrics.prefetchInvalidations += 1;
+      return false;
+    }
     const route = state.ai.decisionReady.route;
+    state.ai.lastSelection = state.ai.decisionReady.selection;
     state.ai.decisionReady = null;
     state.ai.waitingForKey = null;
     state.ai.activePath = route.path.map((cell) => ({ ...cell }));
@@ -370,14 +390,7 @@ function startAiStep(player, direction) {
 }
 
 function prefetchNextRoute(player, route) {
-  const ghosts = ghostSnapshot();
-  const projection = projectRouteState({
-    path: route.path,
-    pellets: state.pellets,
-    powerPellets: state.powerPellets,
-    frightenedFor: state.frightenedFor,
-    playerSpeed: state.player.speed,
-  });
+  const projectedWorld = simulatePath(liveSimulationState(), route.path);
   const target = {
     ...route.endpoint,
     steps: route.path.length,
@@ -388,15 +401,16 @@ function prefetchNextRoute(player, route) {
   if (state.ai.pendingFor === junctionKey || state.ai.decisionReady?.junctionKey === junctionKey) return;
 
   const decision = makeDecisionRequest(target, {
-    ghosts,
-    pellets: projection.pellets,
-    powerPellets: projection.powerPellets,
-    frightenedFor: projection.frightenedFor,
+    ghosts: projectedWorld.ghosts,
+    pellets: projectedWorld.pellets,
+    powerPellets: projectedWorld.powerPellets,
+    frightenedFor: projectedWorld.frightenedFor,
     recentTrail: [...state.trail, ...target.path.map((cell) => cellKey(cell.row, cell.col))],
-    planningLeadTime: target.steps / player.speed,
+    planningLeadTime: projectedWorld.simulatedSeconds,
+    simulationState: projectedWorld,
     trigger,
   });
-  requestAiDecision(decision, junctionKey, trigger);
+  requestAiDecision(decision, junctionKey, trigger, decisionStateKey(projectedWorld));
 }
 
 function makeDecisionRequest(player, {
@@ -406,6 +420,7 @@ function makeDecisionRequest(player, {
   frightenedFor = state.frightenedFor,
   recentTrail = state.trail,
   planningLeadTime = 0,
+  simulationState = null,
   trigger = "route start",
 } = {}) {
   const decision = buildDecisionRequest({
@@ -419,33 +434,73 @@ function makeDecisionRequest(player, {
     recentTrail,
     playerSpeed: state.player.speed,
     planningLeadTime,
+    preferredFoodTargetKey: state.ai.foodTargetKey,
+    elapsedTime: simulationState?.elapsedTime ?? state.elapsedTime,
+    randomSeed: simulationState?.seed ?? state.randomSeed,
+    simulationState,
   });
+  state.ai.foodTargetKey = decision.meta.foodTargetKey;
   decision.meta.trigger = trigger;
-  decision.state.planningPolicy = `${activeProvider().name} chooses complete two-junction routes; no local route fallback`;
+  decision.state.planningPolicy = `${activeProvider().name} chooses every route to the next junction; no local route fallback`;
   decision.state.decisionTrigger = trigger;
   return decision;
 }
 
 function ghostSnapshot() {
   return state.ghosts.map((ghost) => ({
-    ...renderedPosition(ghost),
+    ...ghost,
+    home: { ...ghost.home },
+    corner: { ...ghost.corner },
     name: ghost.name,
     direction: ghost.direction,
     speed: ghost.speed,
   }));
 }
 
-async function requestAiDecision(decision, junctionKey, trigger) {
+function liveSimulationState() {
+  return createSimulationState({
+    player: state.player,
+    ghosts: ghostSnapshot(),
+    pellets: state.pellets,
+    powerPellets: state.powerPellets,
+    frightenedFor: state.frightenedFor,
+    level: state.level,
+    elapsedTime: state.elapsedTime,
+    seed: state.randomSeed,
+  });
+}
+
+function decisionStateKey(world = null) {
+  const player = world?.player || state.player;
+  const ghosts = world?.ghosts || state.ghosts;
+  const pellets = world?.pellets || state.pellets;
+  const powerPellets = world?.powerPellets || state.powerPellets;
+  const frightenedFor = world?.frightenedFor ?? state.frightenedFor;
+  const ghostKey = ghosts.map((ghost) => {
+    const position = actorPosition(ghost);
+    return `${Math.round(position.row * 4) / 4},${Math.round(position.col * 4) / 4},${ghost.direction}`;
+  }).join("|");
+  return `${player.row},${player.col};${pellets.size},${powerPellets.size};${Math.round(frightenedFor * 4) / 4};${ghostKey}`;
+}
+
+async function requestAiDecision(decision, junctionKey, trigger, expectedStateKey = decisionStateKey()) {
   const provider = activeProvider();
   const requestId = ++state.ai.requestId;
   state.ai.pending = true;
   state.ai.pendingFor = junctionKey;
   state.ai.decisionReady = null;
   state.ai.metrics.requests += 1;
+  state.ai.metrics.totalSearchTimeMs += decision.meta.searchTimeMs || 0;
+  state.ai.metrics.maximumSearchTimeMs = Math.max(state.ai.metrics.maximumSearchTimeMs, decision.meta.searchTimeMs || 0);
+  if (decision.state.forecast.noCollisionFreeRouteFound) state.ai.metrics.forcedDangerStates += 1;
   state.ai.metrics.loopRoutesExcluded += decision.state.antiLoopRule.blockedRouteIds.length;
+  const foodTarget = decision.state.foodNavigation?.target;
+  const targetLabel = foodTarget
+    ? `target ${foodTarget.row},${foodTarget.col} in ${decision.state.foodNavigation.targetRegion}`
+    : "the cleared maze";
   setAiStatus("thinking", "Thinking");
   elements.jevDecision.textContent = "EVALUATING";
-  elements.jevCaption.textContent = `Comparing ${decision.routeChoices.length} routes because of ${trigger}.`;
+  elements.jevCaption.textContent = `Comparing ${decision.routeChoices.length} routes toward ${targetLabel} because of ${trigger}.`;
   elements.jevActivity.textContent = isWaitingForAi()
     ? `Planning for ${trigger} at cell ${decision.meta.row},${decision.meta.col} · Holding this tile so only ${provider.name} chooses the route.`
     : `Planning for ${trigger} at cell ${decision.meta.row},${decision.meta.col} · Pacman and ghosts keep moving.`;
@@ -468,7 +523,18 @@ async function requestAiDecision(decision, junctionKey, trigger) {
     if (requestId !== state.ai.requestId || state.controlMode !== "ai" || provider.id !== state.ai.providerId) return;
     const route = decision.routes.find((candidate) => candidate.id === result.routeId);
     if (!route) throw new Error(`${provider.name} selected a route that is no longer available.`);
-    state.ai.decisionReady = { route, junctionKey, trigger };
+    const selection = {
+      level: state.level,
+      decisionPosition: { row: decision.meta.row, col: decision.meta.col },
+      routeId: route.id,
+      candidateSafetyForecast: decision.state.routeCandidates[route.id],
+      predictedMinimumClearance: route.minClearance,
+      predictedSurvivalHorizon: route.survivalHorizon,
+      collisionPredicted: route.collisionOccurred,
+      searchDepth: route.searchDepth,
+      simulationSeed: route.simulationSeed,
+    };
+    state.ai.decisionReady = { route, junctionKey, trigger, expectedStateKey, selection };
     showAiDecision(result, decision);
   } catch (error) {
     if (requestId !== state.ai.requestId || state.controlMode !== "ai" || provider.id !== state.ai.providerId) return;
@@ -495,61 +561,23 @@ function updateGhosts(delta) {
 }
 
 function beginStep(entity, direction, actor) {
-  const next = nextCell(entity.row, entity.col, direction);
-  if (!isWalkable(next.row, next.col, actor)) return false;
-  entity.fromRow = entity.row;
-  entity.fromCol = entity.col;
-  entity.toRow = next.row;
-  entity.toCol = next.col;
-  entity.progress = Number.EPSILON;
-  return true;
+  return beginActorStep(entity, direction, actor);
 }
 
 function moveEntity(entity, delta, onArrive = () => {}) {
-  if (entity.progress === 0) return;
-  entity.progress += entity.speed * delta;
-  if (entity.progress < 1) return;
-  entity.row = entity.toRow;
-  entity.col = entity.toCol;
-  entity.fromRow = entity.row;
-  entity.fromCol = entity.col;
-  entity.progress = 0;
-  onArrive();
+  if (advanceActor(entity, delta)) onArrive();
 }
 
 function chooseGhostDirection(ghost) {
-  let options = availableDirections(ghost.row, ghost.col, "ghost");
-  if (options.length > 1) options = options.filter((direction) => direction !== OPPOSITE[ghost.direction]);
-  if (!options.length) return OPPOSITE[ghost.direction];
-
-  if (state.frightenedFor > 0) return options[Math.floor(seededRandom() * options.length)];
-
-  const target = ghostTarget(ghost);
-  return options.reduce((best, direction) => {
-    const candidate = nextCell(ghost.row, ghost.col, direction);
-    const bestCell = nextCell(ghost.row, ghost.col, best);
-    return squaredDistance(candidate, target) < squaredDistance(bestCell, target) ? direction : best;
-  }, options[0]);
-}
-
-function ghostTarget(ghost) {
-  const playerPosition = renderedPosition(state.player);
-  const mode = Math.floor(state.elapsedTime / 7) % 4;
-  if (mode === 3) return ghost.corner;
-  if (ghost.name === "Flicker") {
-    const direction = DIRECTIONS[state.player.direction];
-    return { row: playerPosition.row + direction.row * 4, col: playerPosition.col + direction.col * 4 };
-  }
-  if (ghost.name === "Glitch") {
-    const distance = squaredDistance(ghost, playerPosition);
-    return distance < 36 ? ghost.corner : playerPosition;
-  }
-  return playerPosition;
+  const choice = chooseGhostDirectionCore({ ghost, player: state.player, frightenedFor: state.frightenedFor, elapsedTime: state.elapsedTime, seed: state.randomSeed });
+  state.randomSeed = choice.seed;
+  return choice.direction;
 }
 
 function seededRandom() {
-  state.randomSeed = (Math.imul(state.randomSeed, 1_664_525) + 1_013_904_223) >>> 0;
-  return state.randomSeed / 0x1_0000_0000;
+  const random = nextSeededRandom(state.randomSeed);
+  state.randomSeed = random.seed;
+  return random.value;
 }
 
 function collectAt(row, col) {
@@ -562,7 +590,7 @@ function collectAt(row, col) {
   } else if (state.powerPellets.delete(key)) {
     if (state.controlMode === "ai") state.ai.metrics.dotsCollected += 1;
     addScore(50);
-    state.frightenedFor = 8;
+    state.frightenedFor = POWER_MODE_SECONDS;
     state.player.pauseFor = Math.max(state.player.pauseFor, POWER_DOT_PAUSE_SECONDS);
     playSequence([220, 330, 440], 0.055);
     announce("Power mode active.");
@@ -584,30 +612,52 @@ function checkCollisions() {
   for (const ghost of state.ghosts) {
     const position = renderedPosition(ghost);
     const distance = Math.hypot(player.row - position.row, player.col - position.col);
-    if (distance >= 0.62) continue;
+    if (distance >= COLLISION_RADIUS) continue;
     if (state.frightenedFor > 0) {
       addScore(200);
       Object.assign(ghost, makeEntity(ghost.home, "up", ghost.speed));
       announce(`${ghost.name} caught. 200 points.`);
       playSequence([600, 820], 0.06);
     } else {
+      recordDeathDiagnostic(ghost, player, position);
       loseLife();
     }
     break;
   }
 }
 
+function recordDeathDiagnostic(ghost, playerPosition, ghostPosition) {
+  const selected = state.ai.lastSelection;
+  const diagnostic = {
+    ...(selected || {}),
+    level: state.level,
+    actualPacmanPosition: { row: playerPosition.row, col: playerPosition.col },
+    actualGhostPosition: { row: ghostPosition.row, col: ghostPosition.col },
+    ghostName: ghost.name,
+    ghostHeading: ghost.direction,
+    powerTimeRemaining: state.frightenedFor,
+    forecastMismatch: Boolean(selected && !selected.collisionPredicted),
+  };
+  state.ai.lastDeathDiagnostic = diagnostic;
+  if (diagnostic.forecastMismatch) state.ai.metrics.predictedSafeDeaths += 1;
+  state.ai.log.unshift({
+    number: state.ai.metrics.responses,
+    cell: selected ? `${selected.decisionPosition.row},${selected.decisionPosition.col}` : "—",
+    trigger: diagnostic.forecastMismatch ? "DEATH · FORECAST MISMATCH" : "DEATH · PREDICTED DANGER",
+    candidates: JSON.stringify(diagnostic),
+    direction: ghost.direction,
+    routeId: selected?.routeId,
+    confidence: NaN,
+    latencyMs: null,
+    model: ghost.name,
+    source: "death",
+  });
+  state.ai.log = state.ai.log.slice(0, 10);
+  renderTelemetryLog();
+}
+
 function renderedPosition(entity) {
-  if (!entity || entity.progress === 0) return { row: entity?.row ?? 0, col: entity?.col ?? 0 };
-  let fromCol = entity.fromCol;
-  let toCol = entity.toCol;
-  if (Math.abs(toCol - fromCol) > 1) {
-    if (toCol === 0) toCol = parsed.width;
-    else fromCol = parsed.width;
-  }
-  let col = fromCol + (toCol - fromCol) * entity.progress;
-  if (col >= parsed.width) col -= parsed.width;
-  return { row: entity.fromRow + (entity.toRow - entity.fromRow) * entity.progress, col };
+  return actorPosition(entity);
 }
 
 function gameLoop(now) {
@@ -813,6 +863,8 @@ function setControlMode(mode) {
 
 function showAiDecision(result, decision) {
   const provider = activeProvider();
+  const foodTarget = decision.state.foodNavigation?.target;
+  const targetLabel = foodTarget ? `target ${foodTarget.row},${foodTarget.col}` : "the final cleared state";
   state.ai.model = result.model || state.ai.model;
   state.ai.metrics.responses += 1;
   state.ai.metrics.inputTokens += Number(result.usage?.input_tokens) || 0;
@@ -822,7 +874,7 @@ function showAiDecision(result, decision) {
   elements.jevConfidence.textContent = percent(result.confidence);
   elements.jevLatency.textContent = `${result.latencyMs} ms`;
   elements.jevModel.textContent = result.model || state.ai.model || provider.name;
-  elements.jevCaption.textContent = `${provider.name} selected a complete route for ${decision.meta.trigger}. Pacman follows it while ${provider.name} plans ahead.`;
+  elements.jevCaption.textContent = `${provider.name} selected a complete route toward ${targetLabel}. Pacman follows it while ${provider.name} plans ahead.`;
   renderProbabilities(result.probabilities, result.routeId);
   renderCandidateTelemetry(decision.routeChoices, result.probabilities, result.routeId);
   addDecisionHistory(result.direction);
@@ -918,6 +970,10 @@ function addTelemetryLog({ decision, direction, routeId, confidence, latencyMs, 
   });
   state.ai.log = state.ai.log.slice(0, 10);
 
+  renderTelemetryLog();
+}
+
+function renderTelemetryLog() {
   const rows = state.ai.log.map((entry) => {
     const row = document.createElement("tr");
     const values = [
@@ -988,6 +1044,11 @@ function freshAiMetrics() {
     dotsCollected: 0,
     deaths: 0,
     loopRoutesExcluded: 0,
+    prefetchInvalidations: 0,
+    predictedSafeDeaths: 0,
+    forcedDangerStates: 0,
+    totalSearchTimeMs: 0,
+    maximumSearchTimeMs: 0,
     inputTokens: 0,
     outputTokens: 0,
     totalLatency: 0,

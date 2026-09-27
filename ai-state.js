@@ -1,7 +1,8 @@
 import { DIRECTIONS, DOT_PAUSE_SECONDS, LEVEL_MAP, OPPOSITE, POWER_DOT_PAUSE_SECONDS, availableDirections, cellKey, isWalkable, mazeRegion, nextCell, pacmanSpeed } from "./game-core.js";
-import { enumerateRouteCandidates, filterSelectableRoutes } from "./route-planner.js";
+import { enumerateRouteCandidates, filterSelectableRoutes, selectFoodTarget } from "./route-planner.js";
 
-export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, lives = 3, recentTrail = [], playerSpeed = pacmanSpeed(level, frightenedFor > 0), planningLeadTime = 0 }) {
+export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, frightenedFor, level, lives = 3, recentTrail = [], playerSpeed = pacmanSpeed(level, frightenedFor > 0), planningLeadTime = 0, preferredFoodTargetKey = null, elapsedTime = 0, randomSeed = 0x51a7c0de, simulationState = null, searchDepth = 3 }) {
+  const searchStartedAt = performance.now();
   const options = availableDirections(player.row, player.col);
   const frightened = frightenedFor > 0;
 
@@ -27,12 +28,14 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
     };
   });
   const assessmentByDirection = new Map(assessments.map((assessment) => [assessment.direction, assessment]));
-  const allRoutes = enumerateRouteCandidates({ player, ghosts, pellets, powerPellets, frightenedFor, recentTrail, playerSpeed, planningLeadTime });
+  const foodTarget = selectFoodTarget({ player, pellets, powerPellets, preferredKey: preferredFoodTargetKey });
+  const allRoutes = enumerateRouteCandidates({ player, ghosts, pellets, powerPellets, frightenedFor, recentTrail, playerSpeed, planningLeadTime, foodTarget, level, elapsedTime, randomSeed, simulationState, searchDepth });
   const routes = filterSelectableRoutes(allRoutes, frightened);
   const blockedRouteIds = allRoutes.filter((route) => !routes.includes(route)).map((route) => route.id);
+  const wholeMazeSnapshot = buildMazeSnapshot(player, ghosts, pellets, powerPellets, frightenedFor);
 
   return {
-    meta: { row: player.row, col: player.col },
+    meta: { row: player.row, col: player.col, foodTargetKey: foodTarget?.key || null, searchDepth, simulationSeed: randomSeed, searchTimeMs: performance.now() - searchStartedAt },
     state: {
       game: "Pacman maze chase",
       objective: "Survive and clear every food dot.",
@@ -45,20 +48,31 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
       progress: progressLabel(pellets.size + powerPellets.size),
       lives,
       currentHeading: player.direction,
+      foodNavigation: foodTarget ? {
+        policy: "Commit to this exact remaining dot until it is collected. Prefer safe routes that reduce targetTravelTiles; detour only for concrete ghost danger.",
+        target: { row: foodTarget.row, col: foodTarget.col },
+        targetKey: foodTarget.key,
+        targetKind: foodTarget.kind,
+        targetRegion: foodTarget.region,
+        shortestDistanceFromDecision: foodTarget.distance,
+        remainingDotsByRegion: wholeMazeSnapshot.dotsByRegion,
+      } : { policy: "No food remains.", target: null },
       plannedDecisionPosition: { row: player.row, col: player.col },
       powerModeSecondsRemaining: rounded(frightenedFor),
       recentPacmanTiles: recentTrail.slice(-8),
       forecast: {
         planStartsInSeconds: rounded(planningLeadTime),
-        method: "conservative shortest-path ghost timing from the live snapshot",
+        method: `deterministic fixed-step concurrent simulation, ${searchDepth} junction decisions deep`,
+        noCollisionFreeRouteFound: !allRoutes.some((route) => route.survivedHorizon && !route.collisionOccurred),
+        simulationSeed: randomSeed,
       },
       levelNumber: level,
       level: level > 3 ? "advanced speed" : level > 1 ? "increased speed" : "base speed",
       antiLoopRule: {
         blockedRouteIds,
-        explanation: "Recent foodless U-turns are excluded unless they improve Pacman's ghost-danger band.",
+        explanation: "These routes were simulated but excluded because at least one alternative survived the full horizon. If all routes are fatal, every least-bad choice is retained.",
       },
-      wholeMazeSnapshot: buildMazeSnapshot(player, ghosts, pellets, powerPellets, frightenedFor),
+      wholeMazeSnapshot,
       directionAssessments: Object.fromEntries(Object.keys(DIRECTIONS).map((direction) => {
         const assessment = assessmentByDirection.get(direction);
         return [direction, assessment
@@ -76,6 +90,14 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
         secondMove: route.directions[1] || "none",
         routeTiles: route.path.length,
         routeDurationSeconds: rounded(route.duration),
+        collisionOccurred: route.collisionOccurred,
+        survivedFullHorizon: route.survivedHorizon,
+        simulatedSurvivalSeconds: rounded(route.survivalHorizon),
+        minimumClearanceTiles: Number.isFinite(route.minClearance) ? rounded(route.minClearance) : "unbounded",
+        forcedTrap: route.forcedTrap,
+        searchDepth: route.searchDepth,
+        simulationSeed: route.simulationSeed,
+        continuationPreview: route.continuationPreview,
         nearestGhostLeadSeconds: Number.isFinite(route.safetyMargin) ? rounded(route.safetyMargin) : "unreachable",
         ghostTiming: route.ghostRisk,
         foodDots: route.pelletCount,
@@ -86,16 +108,27 @@ export function buildDecisionRequest({ player, ghosts, pellets, powerPellets, fr
         nearestRemainingDotRegion: route.nearestRemainingFoodRegion,
         remainingDotsWithin8Tiles: route.nearbyRemainingFood,
         destinationExitCount: route.escapeRoutes,
+        safeContinuationCount: route.safeContinuationCount,
+        cautionContinuationCount: route.cautionContinuationCount,
+        bestContinuationGhostLeadSeconds: Number.isFinite(route.bestContinuationSafetyMargin) ? rounded(route.bestContinuationSafetyMargin) : "unreachable",
         recentPathTiles: route.repeatedCells,
         immediateReverse: route.immediateReverse,
         nearbyStartingDotsLeftBehind: route.localFoodLeftBehind,
         codeStrategicRank: route.strategicRank,
-        codeStrategicScore: route.strategicScore,
+        powerUse: route.powerUse,
+        powerModeRemainingAtHorizon: rounded(route.powerModeRemaining),
+        edibleGhostsReached: route.ghostsEaten,
+        reachesCommittedTarget: route.targetCollected,
+        targetDistanceAfterRoute: route.targetDistanceAfterRoute,
+        targetTravelTiles: route.targetTravelTiles,
+        targetProgressTiles: route.targetProgressTiles,
+        targetDetourTiles: route.targetDetourTiles,
       }])),
     },
     routeChoices: routes.map(({ id, direction, directions, summary }) => ({ id, direction, directions, summary })),
     assessments,
     routes,
+    evaluatedRoutes: allRoutes,
   };
 }
 

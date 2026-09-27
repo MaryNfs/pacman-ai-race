@@ -18,7 +18,7 @@ npm start
 
 Then open [http://localhost:4173](http://localhost:4173) for the side-by-side race. Solo and manual play remain available at [http://localhost:4173/pilot.html](http://localhost:4173/pilot.html).
 
-For repeatable model comparison, open [http://localhost:4173/benchmark.html](http://localhost:4173/benchmark.html). It runs Jev and all three Laya checkpoints sequentially over the same seeds and reports score, clears, dots, deaths, latency, and each Laya checkpoint's paired score difference from Jev.
+For repeatable model comparison, open [http://localhost:4173/benchmark.html](http://localhost:4173/benchmark.html). It runs Jev and all three Laya checkpoints sequentially over the same seeds and reports score, clears, dots, deaths, latency, and each Laya checkpoint's paired score difference from Jev. Choose one to five levels per run when testing whether a pilot can progress beyond the first maze.
 
 ## Side-by-side comparison
 
@@ -76,17 +76,19 @@ Laya is not bundled into the Node process: it remains a separate, self-hosted se
 
 - Before every decision, code builds a fresh whole-board snapshot containing the full maze, every remaining dot, Pacman's planned position and heading, every ghost's position and heading, lives, power timer, and recent path. The score stays in the UI and is not sent to the model because it does not change the best route.
 - Jev receives that rich state unchanged. Laya alone receives a compact adapter with the same full maze, live actors, power timer, remaining-dot counts, and shorter route criteria so the request fits its smaller checkpoint contexts.
+- The planner selects one real remaining dot from the full maze as a committed target. That target stays fixed until collected; every route tells the model whether it reaches the target, moves closer, makes no progress, or detours away. Remaining-dot counts by region are included explicitly, so final dots cannot disappear inside the raw map representation.
+- Route safety timing includes Pacman's pause on every regular and power dot. This prevents a route from being labelled safe using open-corridor speed while ghosts continue moving during food collection.
 - A normal ghost is fatal from every direction, including when Pacman catches it from behind. Both provider prompts say this explicitly; only a still-frightened ghost is edible.
 - Level-one movement follows the arcade-style ratio: Pacman moves at 80% base speed and normal ghosts at 75%, but Pacman pauses briefly for every dot and longer for a power dot. That means a small empty-corridor advantage exists, but ordinary dot eating usually makes Pacman slower overall and never makes dangerous contact safe.
-- Code then ranks every legal route across the next two junctions using ghost timing, local-area cleanup, distance to future food, escape options, and recent-path overlap.
+- Code runs a deterministic fixed-step simulation of Pacman, food pauses, power mode, and the real ghost targeting rules for every legal route. The bounded search looks three junction decisions ahead (up to 240 search nodes), filters simulated-fatal routes whenever any full-horizon survivor exists, and ranks the survivors lexicographically rather than allowing food value to outweigh death.
 - Before each planned route begins, the local server sends compact structured route summaries and one typed `choice` question through the official `@typesafe-ai/sdk`.
 - The selected provider receives routes beginning with every walkable direction at that junction, including reverse/U-turn options. The state also lists blocked directions explicitly so the omission is never ambiguous.
-- U-turns remain available for genuine escapes, but a safety-aware rule removes foodless recent reversals whenever another route is in the same or a safer ghost-danger band. The game never replaces the provider's returned route.
+- U-turns remain available. Repetition is considered only after survival, continuation, escape, power, and food facts. The game never replaces the provider's returned route.
 - The selected provider is the only route chooser in AI mode. Pacman executes its complete multi-tile route while the next route is prefetched, avoiding a network wait on every tile.
 - If a prefetched answer is still late at the route endpoint, the world briefly holds there until the selected provider responds; no local safety route is substituted.
 - Failed requests are shown and retried. They never create a `Local safety` entry in the decision log.
 - The model can return only a supplied route ID. The server validates that invariant before the browser acts.
-- Pacman executes the complete selected route and asks the provider for the following route immediately. This receding-horizon loop gives it enough planning time while keeping control of every meaningful turn.
+- Pacman executes only the selected immediate corridor and replans at the next junction. Prefetch starts from a simulated projection of the remaining active corridor, including concurrent ghost movement; a materially mismatched arrival snapshot invalidates the prefetched answer.
 - Pacman, ghosts, timers, and collisions keep moving while the next route is planned.
 - The telemetry view shows the live whole-maze food map, complete structured state, route criteria, route probabilities, usage, latency, and a ten-decision trace. It does not invent chain-of-thought text that neither provider returns.
 
@@ -106,4 +108,6 @@ After installing dependencies, run all checks with:
 npm run check
 ```
 
-The game is built with semantic HTML, modern CSS, Canvas, JavaScript modules, and TypeSafe AI's official SDK. Jev and Laya have separate provider adapters, while sharing only payload validation and response normalization. Core maze rules, two-junction route simulation, decision-state preparation, benchmark aggregation, server validation, and response handling are tested independently of the browser. Tests use fake clients and never spend API credits or load local model weights.
+Run the fixed-seed, two-level, active-ghost benchmark without provider credentials with `npm run benchmark:offline`. It reports highest level, clears, deaths, dots, decisions, forecast mismatches, search time, and forced-danger states for both a legacy-style immediate-food policy and the safety-first rank-one policy. Simulation advances in fixed time steps and never uses wall-clock timing for game state.
+
+The game is built with semantic HTML, modern CSS, Canvas, JavaScript modules, and TypeSafe AI's official SDK. Jev and Laya have separate provider adapters, while sharing only payload validation and response normalization. Core maze rules, next-junction route simulation, decision-state preparation, benchmark aggregation, server validation, and response handling are tested independently of the browser. Tests use fake clients and never spend API credits or load local model weights.

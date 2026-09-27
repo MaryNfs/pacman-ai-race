@@ -7,9 +7,11 @@ export const LAYA_MODEL = process.env.LAYA_MODEL?.trim() || "english";
 const instructions = {
   task: "Choose one safe Pacman route.",
   rules: [
+    "Never choose a simulated-fatal route when any collision-free candidate exists. Survival comes first.",
     "DANGEROUS ghost contact is fatal from every direction, even when Pacman catches it from behind. Never chase or overtake one.",
     "EDIBLE ghosts may be approached only when power time lasts through contact.",
-    "Prefer lower code rank unless another route clearly survives longer.",
+    "Compare survival, clearance, traps and exits, power tactics, food progress, then repetition.",
+    "The continuation preview is only a forecast; Pacman replans at the next junction.",
     "Choose exactly one supplied route id.",
   ],
 };
@@ -76,6 +78,7 @@ export function compactLayaState(state) {
     power: state.powerModeSecondsRemaining,
     delay: state.forecast?.planStartsInSeconds,
     dots: [board.remainingRegularDots, board.remainingPowerDots],
+    target: state.foodNavigation?.target ? [state.foodNavigation.target.row, state.foodNavigation.target.col, state.foodNavigation.targetRegion, state.foodNavigation.shortestDistanceFromDecision] : null,
     legend: "# wall . dot o power P Pacman A/B/C fatal a/b/c edible * stacked",
     maze: board.mapTopToBottom?.join("\n"),
     ghosts: board.ghosts?.map((ghost) => [ghost.marker, ghost.position?.row, ghost.position?.col, ghost.heading, ghost.state]),
@@ -86,11 +89,19 @@ export function compactRouteCriterion(route, metrics = {}) {
   const lead = typeof metrics.nearestGhostLeadSeconds === "number" ? `${metrics.nearestGhostLeadSeconds}s` : String(metrics.nearestGhostLeadSeconds || "unknown");
   return [
     `rank=${metrics.codeStrategicRank ?? "?"}`,
+    `fatal=${metrics.collisionOccurred ? "y" : "n"}`,
+    `horizon=${metrics.simulatedSurvivalSeconds ?? "?"}s`,
+    `clear=${metrics.minimumClearanceTiles ?? "?"}`,
+    `trap=${metrics.forcedTrap ? "y" : "n"}`,
     `lead=${lead}`,
     `risk=${riskCode(metrics.ghostTiming)}`,
     `food=${metrics.foodDots ?? 0}+${metrics.powerPellets ?? 0}p`,
     `next=${metrics.estimatedTravelTilesToNextDot ?? "?"}`,
+    `target=${metrics.targetTravelTiles ?? "?"}/${metrics.targetProgressTiles ?? 0}`,
     `exits=${metrics.destinationExitCount ?? "?"}`,
+    `safeNext=${metrics.safeContinuationCount ?? "?"}`,
+    `powerLeft=${metrics.powerModeRemainingAtHorizon ?? 0}`,
+    `preview=${metrics.continuationPreview ?? route.direction}`,
     `uturn=${metrics.immediateReverse ? "y" : "n"}`,
     `repeat=${metrics.recentPathTiles ?? 0}`,
   ].join(" ");

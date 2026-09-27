@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildDecisionRequest, buildMazeSnapshot, findCorridorThreat, findNextJunction, nearestDistance, projectRouteState } from "../ai-state.js";
 import { cellKey, parseLevel } from "../game-core.js";
 
-test("decision state exposes every walkable choice, including a U-turn", () => {
+test("decision state evaluates every legal choice and exposes only collision-free candidates", () => {
   const level = parseLevel();
   const decision = buildDecisionRequest({
     player: { row: 3, col: 1, direction: "down" },
@@ -15,11 +15,13 @@ test("decision state exposes every walkable choice, including a U-turn", () => {
     lives: 2,
   });
 
-  assert.deepEqual([...new Set(decision.routeChoices.map((move) => move.direction))].sort(), ["down", "right", "up"]);
+  assert.deepEqual([...new Set(decision.evaluatedRoutes.map((move) => move.direction))].sort(), ["down", "right", "up"]);
+  assert.deepEqual([...new Set(decision.routeChoices.map((move) => move.direction))].sort(), ["down", "up"]);
+  assert.deepEqual(decision.state.antiLoopRule.blockedRouteIds, ["right"]);
   assert.equal(decision.state.mode, "normal mode: ghosts are dangerous");
   assert.match(decision.state.directionAssessments.up.maneuver, /U-turn/);
   assert.equal(decision.state.directionAssessments.left.availability, "blocked by wall");
-  assert.ok(Object.keys(decision.state.routeCandidates).length > 3);
+  assert.equal(Object.keys(decision.state.routeCandidates).length, 2);
   assert.equal(typeof Object.values(decision.state.routeCandidates)[0].nearestGhostLeadSeconds, "number");
   assert.equal(typeof Object.values(decision.state.routeCandidates)[0].nearestRemainingDotDistance, "number");
   assert.equal(Object.values(decision.state.routeCandidates)[0].codeStrategicRank, 1);
@@ -28,6 +30,10 @@ test("decision state exposes every walkable choice, including a U-turn", () => {
   assert.equal(decision.state.lives, 2);
   assert.equal(decision.state.wholeMazeSnapshot.mapTopToBottom.length, 23);
   assert.equal(decision.state.wholeMazeSnapshot.ghosts[0].name, "Blaze");
+  assert.equal(decision.meta.foodTargetKey, decision.state.foodNavigation.targetKey);
+  assert.equal(typeof decision.state.foodNavigation.shortestDistanceFromDecision, "number");
+  assert.deepEqual(decision.state.foodNavigation.remainingDotsByRegion, decision.state.wholeMazeSnapshot.dotsByRegion);
+  assert.equal(typeof Object.values(decision.state.routeCandidates)[0].targetTravelTiles, "number");
 });
 
 test("whole-maze snapshot preserves food and places visible ghost state", () => {

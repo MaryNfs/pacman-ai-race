@@ -12,6 +12,13 @@ import {
   pacmanSpeed,
   parseLevel,
   squaredDistance,
+  advanceActor,
+  beginActorStep,
+  chooseGhostDirection,
+  createSimulationState,
+  ghostTarget,
+  makeActor,
+  simulatePath,
 } from "../game-core.js";
 
 test("maze is rectangular and contains all required actors", () => {
@@ -78,4 +85,57 @@ test("arcade-style movement keeps Pacman only slightly faster before dot pauses"
 
 test("invalid uneven mazes are rejected", () => {
   assert.throws(() => parseLevel(["###", "##"]), /same width/);
+});
+
+test("shared actor movement preserves live tile-step semantics", () => {
+  const actor = makeActor({ row: 3, col: 1 }, "right", pacmanSpeed(1));
+  assert.equal(beginActorStep(actor, "right"), true);
+  assert.equal(advanceActor(actor, 0.1), false);
+  assert.ok(actor.progress > 0 && actor.progress < 1);
+  assert.equal(advanceActor(actor, 0.1), true);
+  assert.deepEqual({ row: actor.row, col: actor.col, progress: actor.progress }, { row: 3, col: 2, progress: 0 });
+});
+
+test("fixed-step simulation includes regular and power-dot pauses and activation", () => {
+  const noFood = createSimulationState({ player: { row: 3, col: 1, direction: "right" }, pellets: new Set(), powerPellets: new Set(), ghosts: [], level: 1 });
+  const withFood = createSimulationState({ player: { row: 3, col: 1, direction: "right" }, pellets: new Set(["3,2"]), powerPellets: new Set(["3,3"]), ghosts: [], level: 1 });
+  const path = [{ row: 3, col: 2 }, { row: 3, col: 3 }];
+  const clear = simulatePath(noFood, path);
+  const fed = simulatePath(withFood, path);
+  assert.ok(fed.simulatedSeconds - clear.simulatedSeconds >= DOT_PAUSE_SECONDS + POWER_DOT_PAUSE_SECONDS - 1 / 120);
+  assert.ok(fed.frightenedFor > 7.9);
+});
+
+test("continuous collision checks catch head-on passing between tile centers", () => {
+  const rows = ["#######", "#     #", "#######"];
+  const world = createSimulationState({
+    player: { row: 1, col: 1, direction: "right" },
+    ghosts: [{ row: 1, col: 5, direction: "left", name: "Blaze", home: { row: 1, col: 5 }, corner: { row: 1, col: 5 } }],
+    pellets: new Set(), powerPellets: new Set(), level: 1,
+  });
+  const result = simulatePath(world, [{ row: 1, col: 2 }, { row: 1, col: 3 }, { row: 1, col: 4 }], { rows });
+  assert.equal(result.dead, true);
+  assert.ok(result.minClearance < 0);
+});
+
+test("power expiration before contact makes the ghost dangerous again", () => {
+  const rows = ["#######", "#     #", "#######"];
+  const world = createSimulationState({
+    player: { row: 1, col: 1, direction: "right" },
+    ghosts: [{ row: 1, col: 5, direction: "left", name: "Blaze", home: { row: 1, col: 5 }, corner: { row: 1, col: 5 } }],
+    frightenedFor: 0.1, pellets: new Set(), powerPellets: new Set(), level: 1,
+  });
+  const result = simulatePath(world, [{ row: 1, col: 2 }, { row: 1, col: 3 }, { row: 1, col: 4 }], { rows });
+  assert.equal(result.dead, true);
+  assert.equal(result.ghostsEaten, 0);
+});
+
+test("chase/scatter targeting and frightened choices are deterministic", () => {
+  const player = makeActor({ row: 3, col: 1 }, "right", pacmanSpeed(1));
+  const ghost = { ...makeActor({ row: 3, col: 5 }, "left", ghostSpeed(1)), name: "Blaze", corner: { row: 1, col: 19 } };
+  assert.deepEqual(ghostTarget({ ghost, player, elapsedTime: 0 }), { row: 3, col: 1 });
+  assert.deepEqual(ghostTarget({ ghost, player, elapsedTime: 21 }), ghost.corner);
+  const first = chooseGhostDirection({ ghost, player, frightenedFor: 2, elapsedTime: 0, seed: 99 });
+  const second = chooseGhostDirection({ ghost, player, frightenedFor: 2, elapsedTime: 0, seed: 99 });
+  assert.deepEqual(first, second);
 });

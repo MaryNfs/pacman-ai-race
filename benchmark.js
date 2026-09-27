@@ -5,6 +5,7 @@ const elements = {
   form: document.querySelector("#benchmarkForm"),
   runCount: document.querySelector("#runCount"),
   baseSeed: document.querySelector("#baseSeed"),
+  levelGoal: document.querySelector("#levelGoal"),
   speed: document.querySelector("#simulationSpeed"),
   start: document.querySelector("#startBenchmark"),
   stop: document.querySelector("#stopBenchmark"),
@@ -29,17 +30,18 @@ elements.form.addEventListener("submit", (event) => {
   const count = clampNumber(elements.runCount.value, 1, 10, 3);
   const baseSeed = Number(elements.baseSeed.value) >>> 0;
   const speed = clampNumber(elements.speed.value, 1, 8, 4);
+  const levels = clampNumber(elements.levelGoal.value, 1, 5, 1);
   const seeds = benchmarkSeeds(baseSeed, count);
   queue = [
-    ...seeds.map((seed) => ({ provider: "jev", model: providerStatus.jev.model, seed, speed })),
-    ...LAYA_MODELS.flatMap((model) => seeds.map((seed) => ({ provider: "laya", model, seed, speed }))),
+    ...seeds.map((seed) => ({ provider: "jev", model: providerStatus.jev.model, seed, speed, levels })),
+    ...LAYA_MODELS.flatMap((model) => seeds.map((seed) => ({ provider: "laya", model, seed, speed, levels }))),
   ];
   results = [];
   running = true;
   elements.start.disabled = true;
   elements.stop.disabled = false;
-  elements.summary.replaceChildren(emptyRow(9, "Results appear after the first completed run."));
-  elements.runs.replaceChildren(emptyRow(8, "The first seeded run is starting."));
+  elements.summary.replaceChildren(emptyRow(15, "Results appear after the first completed run."));
+  elements.runs.replaceChildren(emptyRow(13, "The first seeded run is starting."));
   startNextRun();
 });
 
@@ -98,6 +100,7 @@ function startNextRun() {
     provider: currentScenario.provider,
     seed: String(currentScenario.seed),
     speed: String(currentScenario.speed),
+    levels: String(currentScenario.levels),
   });
   if (currentScenario.provider === "laya") params.set("model", currentScenario.model);
   elements.frame.onload = () => {
@@ -123,6 +126,12 @@ function completeRun(data) {
     dotsCollected: Number(data.dotsCollected) || 0,
     remainingDots: Number(data.remainingDots) || 0,
     requests: Number(data.requests) || 0,
+    level: Number(data.level) || 1,
+    levelsCleared: Number(data.levelsCleared) || 0,
+    predictedSafeDeaths: Number(data.predictedSafeDeaths) || 0,
+    forcedDangerStates: Number(data.forcedDangerStates) || 0,
+    averageSearchTimeMs: Number(data.averageSearchTimeMs) || 0,
+    maximumSearchTimeMs: Number(data.maximumSearchTimeMs) || 0,
     averageLatencyMs: Number.isFinite(data.averageLatencyMs) ? data.averageLatencyMs : null,
   });
   currentScenario = null;
@@ -154,6 +163,12 @@ function renderResults() {
     signed(group.pairedScoreDelta, group.provider === "jev"),
     rounded(group.averageDots),
     rounded(group.averageDeaths, 2),
+    group.highestLevel,
+    rounded(group.averageLevelsCleared, 2),
+    group.predictedSafeDeaths,
+    rounded(group.averageSearchTimeMs, 2),
+    rounded(group.maximumSearchTimeMs, 2),
+    group.forcedDangerStates,
     group.averageLatencyMs === null ? "—" : `${rounded(group.averageLatencyMs)} ms`,
   ]));
   elements.summary.replaceChildren(...summaryRows);
@@ -166,6 +181,11 @@ function renderResults() {
     result.score,
     result.dotsCollected,
     result.deaths,
+    result.level,
+    result.levelsCleared,
+    result.predictedSafeDeaths,
+    `${rounded(result.averageSearchTimeMs, 2)}/${rounded(result.maximumSearchTimeMs, 2)} ms`,
+    result.forcedDangerStates,
     result.averageLatencyMs === null ? "—" : `${result.averageLatencyMs} ms`,
   ]));
   elements.runs.replaceChildren(...runRows);
