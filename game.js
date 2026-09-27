@@ -22,6 +22,13 @@ if (comparisonEmbed) document.body.classList.add("comparison-embed");
 
 const canvas = document.querySelector("#gameCanvas");
 const context = canvas.getContext("2d");
+const boardLayer = document.createElement("canvas");
+boardLayer.width = canvas.width;
+boardLayer.height = canvas.height;
+const boardContext = boardLayer.getContext("2d");
+const MAX_FRAME_DELTA = 0.25;
+const MAX_SIMULATION_STEP = 1 / 60;
+const RENDER_INTERVAL = comparisonEmbed ? 1000 / 30 : 0;
 const elements = {
   score: document.querySelector("#score"),
   highScore: document.querySelector("#highScore"),
@@ -87,6 +94,7 @@ const state = {
   frightenedFor: 0,
   pauseStartedAt: 0,
   lastTime: 0,
+  lastDrawTime: 0,
   elapsedTime: 0,
   muted: comparisonEmbed,
   audio: null,
@@ -176,6 +184,7 @@ function beginGame(controlMode = state.controlMode) {
   resetGame();
   state.status = "playing";
   state.lastTime = performance.now();
+  state.lastDrawTime = 0;
   elements.startOverlay.classList.add("hidden");
   elements.messageOverlay.classList.add("hidden");
   elements.pauseButton.firstChild.textContent = "Pause ";
@@ -557,31 +566,37 @@ function renderedPosition(entity) {
 }
 
 function gameLoop(now) {
-  const delta = Math.min((now - state.lastTime) / 1000, 0.05);
+  let remainingDelta = Math.min(Math.max((now - state.lastTime) / 1000, 0), MAX_FRAME_DELTA);
   state.lastTime = now;
 
-  if (state.status === "playing") {
-    updatePlayer(delta);
-    if (!isWaitingForAi()) {
-      state.elapsedTime += delta;
-      state.frightenedFor = Math.max(0, state.frightenedFor - delta);
-      updateGhosts(delta);
-      checkCollisions();
-    }
+  while (state.status === "playing" && remainingDelta > 0) {
+    const simulationStep = Math.min(remainingDelta, MAX_SIMULATION_STEP);
+    updateSimulation(simulationStep);
+    remainingDelta -= simulationStep;
   }
-  draw(now);
+
+  if (RENDER_INTERVAL === 0 || now - state.lastDrawTime >= RENDER_INTERVAL) {
+    draw(now);
+    state.lastDrawTime = now;
+  }
   if (["playing", "paused", "countdown"].includes(state.status)) requestAnimationFrame(gameLoop);
+}
+
+function updateSimulation(delta) {
+  updatePlayer(delta);
+  if (!isWaitingForAi()) {
+    state.elapsedTime += delta;
+    state.frightenedFor = Math.max(0, state.frightenedFor - delta);
+    updateGhosts(delta);
+    checkCollisions();
+  }
 }
 
 function draw(now = 0) {
   context.clearRect(0, 0, canvas.width, canvas.height);
-  const gradient = context.createRadialGradient(canvas.width / 2, canvas.height / 2, 40, canvas.width / 2, canvas.height / 2, canvas.width * 0.75);
-  gradient.addColorStop(0, "#0a0e24");
-  gradient.addColorStop(1, "#03050d");
-  context.fillStyle = gradient;
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(boardLayer, 0, 0);
 
-  drawMaze(now);
+  drawCollectibles(now);
   drawPlayer(now);
   state.ghosts.forEach((ghost) => drawGhost(ghost, now));
 
@@ -608,17 +623,32 @@ function isWaitingForAi() {
   return state.ai.waitingForKey === cellKey(state.player.row, state.player.col);
 }
 
-function drawMaze(now) {
+function buildBoardLayer() {
+  const gradient = boardContext.createRadialGradient(canvas.width / 2, canvas.height / 2, 40, canvas.width / 2, canvas.height / 2, canvas.width * 0.75);
+  gradient.addColorStop(0, "#0a0e24");
+  gradient.addColorStop(1, "#03050d");
+  boardContext.fillStyle = gradient;
+  boardContext.fillRect(0, 0, canvas.width, canvas.height);
+
   for (let row = 0; row < parsed.height; row += 1) {
     for (let col = 0; col < parsed.width; col += 1) {
       const cell = getCell(row, col);
       const x = col * TILE_SIZE;
       const y = row * TILE_SIZE;
-      if (cell === "#") drawWall(x, y, row, col);
+      if (cell === "#") drawWall(boardContext, x, y, row, col);
       if (cell === "=") {
-        context.fillStyle = "#ff72c7";
-        context.fillRect(x + 3, y + TILE_SIZE / 2 - 1, TILE_SIZE - 6, 2);
+        boardContext.fillStyle = "#ff72c7";
+        boardContext.fillRect(x + 3, y + TILE_SIZE / 2 - 1, TILE_SIZE - 6, 2);
       }
+    }
+  }
+}
+
+function drawCollectibles(now) {
+  for (let row = 0; row < parsed.height; row += 1) {
+    for (let col = 0; col < parsed.width; col += 1) {
+      const x = col * TILE_SIZE;
+      const y = row * TILE_SIZE;
       const key = cellKey(row, col);
       if (state.pellets.has(key)) drawPellet(x + 12, y + 12, 2.2, "#f7e9c2");
       if (state.powerPellets.has(key)) {
@@ -629,25 +659,25 @@ function drawMaze(now) {
   }
 }
 
-function drawWall(x, y, row, col) {
-  context.fillStyle = "rgba(59, 74, 183, .16)";
-  context.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-  context.strokeStyle = "#5268ef";
-  context.lineWidth = 1.4;
-  context.shadowColor = "rgba(64, 91, 255, .55)";
-  context.shadowBlur = 5;
-  if (getCell(row - 1, col) !== "#") line(x + 2, y + 2, x + TILE_SIZE - 2, y + 2);
-  if (getCell(row + 1, col) !== "#") line(x + 2, y + TILE_SIZE - 2, x + TILE_SIZE - 2, y + TILE_SIZE - 2);
-  if (getCell(row, col - 1) !== "#") line(x + 2, y + 2, x + 2, y + TILE_SIZE - 2);
-  if (getCell(row, col + 1) !== "#") line(x + TILE_SIZE - 2, y + 2, x + TILE_SIZE - 2, y + TILE_SIZE - 2);
-  context.shadowBlur = 0;
+function drawWall(targetContext, x, y, row, col) {
+  targetContext.fillStyle = "rgba(59, 74, 183, .16)";
+  targetContext.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+  targetContext.strokeStyle = "#5268ef";
+  targetContext.lineWidth = 1.4;
+  targetContext.shadowColor = "rgba(64, 91, 255,.55)";
+  targetContext.shadowBlur = 5;
+  if (getCell(row - 1, col) !== "#") line(targetContext, x + 2, y + 2, x + TILE_SIZE - 2, y + 2);
+  if (getCell(row + 1, col) !== "#") line(targetContext, x + 2, y + TILE_SIZE - 2, x + TILE_SIZE - 2, y + TILE_SIZE - 2);
+  if (getCell(row, col - 1) !== "#") line(targetContext, x + 2, y + 2, x + 2, y + TILE_SIZE - 2);
+  if (getCell(row, col + 1) !== "#") line(targetContext, x + TILE_SIZE - 2, y + 2, x + TILE_SIZE - 2, y + TILE_SIZE - 2);
+  targetContext.shadowBlur = 0;
 }
 
-function line(x1, y1, x2, y2) {
-  context.beginPath();
-  context.moveTo(x1, y1);
-  context.lineTo(x2, y2);
-  context.stroke();
+function line(targetContext, x1, y1, x2, y2) {
+  targetContext.beginPath();
+  targetContext.moveTo(x1, y1);
+  targetContext.lineTo(x2, y2);
+  targetContext.stroke();
 }
 
 function drawPellet(x, y, radius, color, glow = false) {
@@ -1185,6 +1215,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden && state.status === "playing") togglePause();
 });
 
+buildBoardLayer();
 loadLevel();
 updateHud();
 draw();
