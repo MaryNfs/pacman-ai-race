@@ -84,7 +84,7 @@ h1 { margin: -2px 0 0; font-size: 27px; line-height: 1; letter-spacing: .08em; }
 .stat-right { text-align: right; }
 .stat strong { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 19px; font-weight: 500; letter-spacing: .1em; }
 
-.play-area { align-items: stretch; gap: 16px; }
+.play-area { align-items: flex-start; gap: 16px; }
 .canvas-frame {
   position: relative;
   min-width: 0;
@@ -149,7 +149,13 @@ kbd {
 .decision-meta span { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: rgba(5,8,20,.35); }
 .decision-meta small { display: block; margin-bottom: 3px; color: #79809e; font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
 .decision-meta strong { display: block; overflow: hidden; color: #dfe3f6; font-family: ui-monospace, monospace; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.probabilities { display: grid; gap: 7px; min-height: 30px; max-height: 150px; overflow-y: auto; }
+.probabilities {
+  display: grid;
+  height: 150px;
+  gap: 7px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
 .probability-row { display: grid; grid-template-columns: 108px 1fr 34px; align-items: center; gap: 7px; color: #9fa6c3; font-family: ui-monospace, monospace; font-size: 8px; text-transform: uppercase; }
 .probability-row.selected { color: var(--yellow); }
 .probability-track { height: 5px; overflow: hidden; border-radius: 999px; background: #252b4b; }
@@ -195,11 +201,11 @@ kbd {
 .telemetry-card-heading > span { color: var(--cyan); font-family: ui-monospace, monospace; font-size: 8px; letter-spacing: .1em; text-transform: uppercase; }
 .telemetry-help { margin: 8px 0 12px; color: #7f87a5; font-size: 10px; line-height: 1.45; }
 .telemetry-card pre {
-  max-height: 260px; margin: 0; padding: 12px; overflow: auto; border-radius: 9px;
+  height: 260px; margin: 0; padding: 12px; overflow: auto; border-radius: 9px;
   color: #bfc8f3; background: #070a16; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  font-size: 9px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+  font-size: 9px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; scrollbar-gutter: stable;
 }
-.candidate-details { display: grid; gap: 8px; max-height: 300px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.candidate-details { display: grid; height: 300px; gap: 8px; margin: 0; padding: 0; overflow-y: auto; list-style: none; scrollbar-gutter: stable; }
 .candidate-details li { padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: rgba(22, 28, 56, .45); }
 .candidate-details li.selected { border-color: rgba(255,226,52,.42); background: rgba(255,226,52,.06); }
 .candidate-details li > div { display: flex; justify-content: space-between; color: #9fa8c8; font-family: ui-monospace, monospace; font-size: 9px; text-transform: uppercase; }
@@ -213,6 +219,7 @@ kbd {
 .telemetry-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .log-card { margin-top: 12px; }
 .table-scroll { overflow-x: auto; }
+.log-card .table-scroll { height: 312px; overflow: auto; scrollbar-gutter: stable; }
 .log-card table { width: 100%; margin-top: 12px; border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 9px; text-align: left; }
 .log-card th, .log-card td { padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .log-card thead th { color: #737d9d; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
