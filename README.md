@@ -1,24 +1,58 @@
-# Pacman × Jev/Laya — Neon Run
+# Pacman AI Race
 
 A browser-based maze chase experiment that runs TypeSafe AI's hosted Jev and self-hosted Laya side by side. Both pilots start from the same maze and receive the same full-board state and typed route choices. Each column exposes its own score, selected route, candidate probabilities, confidence, latency, metrics, and decision log.
 
-## Run locally
+## Local setup
 
-Requirements: Node.js 20 or newer.
+Requirements: Node.js 20 or newer. Python 3.10 or newer is required only when running Laya locally.
+
+1. Install the Node dependencies:
 
 ```sh
 npm install
 ```
 
-Start the local server:
+2. Create your local environment file:
+
+```sh
+cp .env.example .env
+```
+
+3. Open `.env` and configure the providers you want to use:
+
+| Variable | Purpose |
+| --- | --- |
+| `TYPESAFE_API_KEY` | Jev API key from the [TypeSafe console](https://console.typesafe.ai/keys) |
+| `TYPESAFE_MODEL` | Optional Jev model override; defaults to `jev-latest` |
+| `LAYA_BASE_URL` | URL of the separately running Laya server |
+| `LAYA_MODEL` | Laya checkpoint used in solo and comparison modes |
+| `LAYA_API_KEY` | Optional key when the Laya server requires authentication |
+
+You may configure Jev, Laya, or both. Manual mode works without either provider.
+
+4. If you want to use Laya, install and start its self-hosted server in a second terminal:
+
+```sh
+python3 -m venv .laya-venv
+.laya-venv/bin/python -m pip install "laya[serve]"
+.laya-venv/bin/laya-serve
+```
+
+Leave Laya running. Its URL must match `LAYA_BASE_URL` in `.env`. The first launch downloads the model weights. The benchmark checks `english`, `multilingual`, and `typed-decisions`, so preloading those checkpoints is recommended when benchmarking. See the [official Laya repository](https://github.com/NandhaKishorM/laya) for model, device, and Docker configuration.
+
+5. Start Pacman from the project directory:
 
 ```sh
 npm start
 ```
 
-Then open [http://localhost:4173](http://localhost:4173) for the side-by-side race. Solo and manual play remain available at [http://localhost:4173/pilot.html](http://localhost:4173/pilot.html).
+`npm start` loads `.env` automatically. The API keys and Laya connection details stay on the local Node server and are never sent to browser storage or committed to Git.
 
-For repeatable model comparison, open [http://localhost:4173/benchmark.html](http://localhost:4173/benchmark.html). It runs Jev and all three Laya checkpoints sequentially over the same seeds and reports score, clears, dots, deaths, latency, and each Laya checkpoint's paired score difference from Jev. Choose one to five levels per run when testing whether a pilot can progress beyond the first maze.
+Open:
+
+- [http://localhost:4173](http://localhost:4173) — side-by-side Jev and Laya race
+- [http://localhost:4173/pilot.html](http://localhost:4173/pilot.html) — solo AI or manual play
+- [http://localhost:4173/benchmark.html](http://localhost:4173/benchmark.html) — repeatable model benchmark
 
 ## Side-by-side comparison
 
@@ -28,49 +62,6 @@ For repeatable model comparison, open [http://localhost:4173/benchmark.html](htt
 - The two games never share scores, ghosts, routes, pending requests, or telemetry.
 - Both simulations use the same deterministic ghost seed and simulation clock, so provider latency does not change the underlying ghost strategy.
 - Comparison mode requires both providers to be ready. It clearly reports a missing Jev key or an unavailable Laya server before the race begins.
-
-## Enable the Jev pilot
-
-1. Create a key in the [TypeSafe console](https://console.typesafe.ai/keys).
-2. Start the local server with the key in its environment:
-
-```sh
-TYPESAFE_API_KEY="your-key" npm start
-```
-
-You can optionally select a model with `TYPESAFE_MODEL`; the default is `jev-latest`.
-
-```sh
-TYPESAFE_API_KEY="your-key" TYPESAFE_MODEL="jev-1.13.0" npm start
-```
-
-The API key stays on the local Node server. It is never included in frontend JavaScript, browser storage, decision history, or Git. `.env` files are ignored as an additional safeguard.
-
-## Enable the self-hosted Laya pilot
-
-Laya requires Python 3.10 or newer. In a second terminal, create an isolated environment and install Laya's official HTTP server:
-
-```sh
-python3 -m venv .laya-venv
-.laya-venv/bin/python -m pip install "laya[serve]"
-LAYA_HOST=127.0.0.1 LAYA_MODELS=english,multilingual,typed-decisions .laya-venv/bin/laya-serve
-```
-
-The first launch downloads the model weights. Leave that server running, then start Pacman in the original terminal:
-
-```sh
-LAYA_BASE_URL="http://127.0.0.1:8000" npm start
-```
-
-Laya uses the `english` checkpoint by default because this game is an English route-choice task. Override it with `LAYA_MODEL`. The benchmark explicitly tests `english`, `multilingual`, and `typed-decisions`; preloading all three avoids a cold model load between runs, but requires enough memory to keep them resident. If you secure Laya with `LAYA_API_KEY`, pass the same value to the Pacman server. The browser never receives the URL or key.
-
-To enable both choices at once:
-
-```sh
-TYPESAFE_API_KEY="your-jev-key" LAYA_BASE_URL="http://127.0.0.1:8000" npm start
-```
-
-Laya is not bundled into the Node process: it remains a separate, self-hosted service that can use CPU, CUDA, or MPS. See the [official Laya repository](https://github.com/NandhaKishorM/laya) for device and Docker deployment options.
 
 ## How the AI pilots drive
 
