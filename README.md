@@ -2,6 +2,8 @@
 
 A browser-based maze chase experiment that runs TypeSafe AI's hosted Jev and self-hosted Laya side by side. Both pilots start from the same maze and receive the same full-board state and typed route choices. Each column exposes its own score, selected route, candidate probabilities, confidence, latency, metrics, and decision log.
 
+![Pacman AI Race gameplay and decision interface](docs/assets/pacman.gif)
+
 ## Local setup
 
 Requirements: Node.js 20 or newer. Python 3.10 or newer is required only when running Laya locally.
